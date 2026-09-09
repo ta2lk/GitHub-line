@@ -1,0 +1,340 @@
+{
+  "businessProfile": {
+    "businessId": "biz_universal_ai_platform",
+    "businessName": "Universal AI Agent Platform | المنصة الذكية الشاملة",
+    "industry": "Universal Multi-Domain AI Platform (شامل لكل التخصصات والمهام)",
+    "currency": "USD ($)",
+    "subscriptionPlan": "Enterprise",
+    "subscriptionStatus": "active",
+    "monthlyLeadLimit": 5000,
+    "monthlyConversationLimit": 25000,
+    "currentLeadsCount": 14,
+    "currentConversationsCount": 38,
+    "renewalDate": "2026-12-31"
+  },
+  "knowledgeBase": {
+    "businessId": "biz_universal_ai_platform",
+    "businessName": "Universal AI Agent Platform | المنصة الذكية الشاملة",
+    "industry": "Universal Multi-Domain AI & Autonomous Intelligence",
+    "businessDescriptionAr": "وكيل ذكي مستقل وشامل فائق الذكاء، متعدد التخصصات والقدرات: يحل المسائل المعقدة، يكتب ويصحح الأكواد البرمجية، يبحث في الويب ويتحقق من الحقائق الميدانية، يضع استراتيجيات الأعمال وخطط العمل، ينجز الحسابات الرياضية والمالية الدقيقة، ويترجم ويصيغ المستندات باحترافية تامة.",
+    "businessDescriptionTr": "Tüm alanlarda uzman otonom yapay zeka ajanı: Kod yazma, hata ayıklama, web araştırması, iş stratejisi oluşturma, finansal matematiksel analizler ve çok dilli çeviri yetenekleriyle donatılmıştır.",
+    "businessDescriptionEn": "Universal multi-domain autonomous AI Agent platform: Excels at general reasoning, full-stack software development, live web research and fact grounding, enterprise business strategy, precision mathematics, and multilingual content synthesis.",
+    "phone": "+1 (800) 555-0199",
+    "email": "agent@universal-ai.platform",
+    "address": "AI Studio Cloud Operations Center",
+    "city": "Global",
+    "country": "Cloud Infrastructure",
+    "currency": "USD ($)",
+    "isDemoData": true,
+    "lastUpdated": "2026-08-26T21:30:00.000Z",
+    "targetAudienceAr": "المطورون، رواد الأعمال، الشركات، الباحثون، وأي مستخدم يحتاج وكيلاً ذكياً فائق الكفاءة لإنجاز المهام البرمجية والتحليلية والبحثية والتجارية.",
+    "targetAudienceTr": "Geliştiriciler, girişimciler, araştırmacılar ve tüm karmaşık görevleri otonom şekilde çözmek isteyen kullanıcılar.",
+    "targetAudienceEn": "Software developers, enterprises, researchers, founders, and anyone seeking an omni-capable intelligent agent for code, research, business, and analysis.",
+    "customInstructions": "You are an omni-capable, highly intelligent Universal Autonomous AI Agent. Dynamically adapt your thinking and expertise to any query: generate clean full-stack code for programming tasks, provide structured business strategy for business/commercial inquiries, perform live web research and citation for fact checks, solve academic/mathematical calculations with step-by-step rigor, and remain strictly grounded with zero hallucinations.",
+    "salesRules": [
+      "Identify user intent immediately: Technical/Coding vs. Business/Strategy vs. Research/Fact vs. Calculations vs. Creative Writing.",
+      "Deliver direct, highly actionable, structured answers with clean code blocks or bulleted points.",
+      "For business or commercial projects, discover scope, budget, and timeline to suggest optimal architectures.",
+      "Strict Grounding: Never hallucinate unverified external claims or invent false numbers; use web search and verified knowledge base when needed.",
+      "Offer human expert consultation handoff whenever the user requests custom enterprise integrations or human collaboration."
+    ],
+    "offers": [
+      {
+        "id": "off-1",
+        "title": "Enterprise AI Multi-Agent Deployment",
+        "titleAr": "باقة نشر الوكلاء الذكية للمؤسسات مع تدريب مخصص",
+        "titleTr": "Kurumsal Çoklu Ajan Entegrasyon Paketi",
+        "titleEn": "Enterprise AI Multi-Agent Deployment Suite",
+        "discountPercentage": 20,
+        "description": "20% launch discount on dedicated private AI Agent cluster deployment with custom knowledge grounding.",
+        "descriptionAr": "خصم 20% على باقة ربط وتدريب الوكلاء الذكية المخصصة للشركات والمنشآت مع دعم فني متكامل.",
+        "descriptionTr": "Özel bilgi tabanı entegrasyonlu kurumsal ajan kurulumlarında %20 indirim.",
+        "descriptionEn": "20% launch discount on dedicated private AI Agent cluster deployment with custom knowledge grounding."
+      }
+    ],
+    "products": [
+      {
+        "listing_id": "cap-software",
+        "id": "cap-software",
+        "title": "Full-Stack Code Engineering & Architecture Copilot",
+        "titleAr": "هندسة البرمجيات وتطوير الأنظمة والأكواد المتكاملة",
+        "titleTr": "Full-Stack Yazılım Mühendisliği ve Kod Çözümleri",
+        "titleEn": "Full-Stack Code Engineering & Architecture Copilot",
+        "name": "Full-Stack Code Engineering & Architecture Copilot",
+        "nameAr": "هندسة البرمجيات وتطوير الأنظمة والأكواد المتكاملة",
+        "nameTr": "Full-Stack Yazılım Mühendisliği ve Kod Çözümleri",
+        "nameEn": "Full-Stack Code Engineering & Architecture Copilot",
+        "category": "Software & Technology",
+        "location": "Cloud Runtime",
+        "price": 1500,
+        "currency": "USD",
+        "bedrooms": 0,
+        "description": "Generates production-grade React, Node.js, Python, TypeScript, database schemas, and debugs runtime errors autonomously.",
+        "descriptionAr": "تطوير برمجيات متكاملة بلغات React, Node.js, Python, TypeScript، بناء قواعد البيانات، وتصحيح الأخطاء البرمجية التلقائي.",
+        "descriptionTr": "React, Node.js, Python ve veritabanı mimarilerinde üretime hazır kod üretimi ve otomatik hata ayıklama.",
+        "descriptionEn": "Generates production-grade React, Node.js, Python, TypeScript, database schemas, and debugs runtime errors autonomously.",
+        "status": "available",
+        "source": "database",
+        "created_at": "2026-01-10T08:00:00.000Z",
+        "priceType": "starting_at",
+        "features": [
+          "Full-Stack TypeScript / Python",
+          "Database Schema Design",
+          "Bug Diagnostics & Testing",
+          "API Integration",
+          "Refactoring & Security"
+        ],
+        "targetCustomers": "Engineers, CTOs, Startups, Product Builders",
+        "isAvailable": true
+      },
+      {
+        "listing_id": "cap-business",
+        "id": "cap-business",
+        "title": "Strategic Business, Sales & Market Automation",
+        "titleAr": "استراتيجيات الأعمال، أتمتة المبيعات وتأهيل العملاء",
+        "titleTr": "Stratejik İş Danışmanlığı ve Satış Otomasyonu",
+        "titleEn": "Strategic Business, Sales & Market Automation",
+        "name": "Strategic Business, Sales & Market Automation",
+        "nameAr": "استراتيجيات الأعمال، أتمتة المبيعات وتأهيل العملاء",
+        "nameTr": "Stratejik İş Danışmanlığı ve Satış Otomasyonu",
+        "nameEn": "Strategic Business, Sales & Market Automation",
+        "category": "Business & Commerce",
+        "location": "Cloud Runtime",
+        "price": 2200,
+        "currency": "USD",
+        "bedrooms": 0,
+        "description": "Autonomous customer qualification, B2B sales pipelines, feasibility studies, pitch decks, and financial modeling.",
+        "descriptionAr": "تأهيل العملاء والطلبات تلقائياً، إعداد دراسات الجدوى، خطط الأعمال الاستراتيجية، ونماذج التقييم المالي للمشاريع.",
+        "descriptionTr": "Müşteri adaylarını otomatik puanlama, fizibilite raporları, pazar analizi ve satış hunisi yönetimi.",
+        "descriptionEn": "Autonomous customer qualification, B2B sales pipelines, feasibility studies, pitch decks, and financial modeling.",
+        "status": "available",
+        "source": "database",
+        "created_at": "2026-01-12T09:00:00.000Z",
+        "priceType": "starting_at",
+        "features": [
+          "Lead Qualification Scoring",
+          "Feasibility Studies & ROI",
+          "CRM Sync & Handoffs",
+          "Market Competitor Analysis"
+        ],
+        "targetCustomers": "Founders, Sales Directors, E-Commerce Owners, Consultants",
+        "isAvailable": true
+      },
+      {
+        "listing_id": "cap-research",
+        "id": "cap-research",
+        "title": "Verified Deep Web Research & Fact Grounding",
+        "titleAr": "البحث الأكاديمي الميداني الموثق والتحقق من الحقائق",
+        "titleTr": "Doğrulanmış Derin Web Araştırması ve Gerçek Doğrulama",
+        "titleEn": "Verified Deep Web Research & Fact Grounding",
+        "name": "Verified Deep Web Research & Fact Grounding",
+        "nameAr": "البحث الأكاديمي الميداني الموثق والتحقق من الحقائق",
+        "nameTr": "Doğrulanmış Derin Web Araştırması ve Gerçek Doğrulama",
+        "nameEn": "Verified Deep Web Research & Fact Grounding",
+        "category": "Research & Science",
+        "location": "Cloud Runtime",
+        "price": 950,
+        "currency": "USD",
+        "bedrooms": 0,
+        "description": "Live search synthesis across Tier 1 government/scientific sources, extracting verified rules, citation links, and automated test cases.",
+        "descriptionAr": "بحث ميداني حي عبر مصادر موثوقة من المستوى الأول، استخراج القواعد الموثقة، توثيق المراجع، وتوليد اختبارات التحقق الآلية.",
+        "descriptionTr": "Resmi ve bilimsel kaynaklardan anlık bilgi toplama, kaynak referanslama ve otomatik kural doğrulama.",
+        "descriptionEn": "Live search synthesis across Tier 1 government/scientific sources, extracting verified rules, citation links, and automated test cases.",
+        "status": "available",
+        "source": "database",
+        "created_at": "2026-01-14T11:00:00.000Z",
+        "priceType": "starting_at",
+        "features": [
+          "Google Search Grounding",
+          "Source Tier Classification",
+          "Zero-Hallucination Assertion",
+          "Citations & Verification Scores"
+        ],
+        "targetCustomers": "Researchers, Analysts, Legal Teams, Decision Makers",
+        "isAvailable": true
+      },
+      {
+        "listing_id": "cap-math",
+        "id": "cap-math",
+        "title": "Precision Mathematical & Data Computing Engine",
+        "titleAr": "محرك الحسابات الرياضية والتحليل الإحصائي الدقيق",
+        "titleTr": "Hassas Matematiksel ve İstatistiksel Hesaplama Motoru",
+        "titleEn": "Precision Mathematical & Data Computing Engine",
+        "name": "Precision Mathematical & Data Computing Engine",
+        "nameAr": "محرك الحسابات الرياضية والتحليل الإحصائي الدقيق",
+        "nameTr": "Hassas Matematiksel ve İstatistiksel Hesaplama Motoru",
+        "nameEn": "Precision Mathematical & Data Computing Engine",
+        "category": "Mathematics & Analytics",
+        "location": "Cloud Runtime",
+        "price": 800,
+        "currency": "USD",
+        "bedrooms": 0,
+        "description": "Deterministic financial ROI calculations, statistical distributions, formula derivations, and big-data analytics.",
+        "descriptionAr": "حسابات العوائد المالية الدقيقة، التوزيعات الإحصائية، اشتقاق المعادلات الرياضية، وتحليل البيانات المعقدة.",
+        "descriptionTr": "Yatırım getirisi, finansal modelleme, istatistiksel hesaplamalar ve formül analizleri.",
+        "descriptionEn": "Deterministic financial ROI calculations, statistical distributions, formula derivations, and big-data analytics.",
+        "status": "available",
+        "source": "database",
+        "created_at": "2026-01-16T12:00:00.000Z",
+        "priceType": "starting_at",
+        "features": [
+          "Deterministic Math Solver",
+          "Compound ROI Calculations",
+          "Statistical Testing",
+          "Step-by-Step Proofs"
+        ],
+        "targetCustomers": "Financial Analysts, Data Scientists, Students, Investors",
+        "isAvailable": true
+      }
+    ],
+    "openingHours": [
+      { "dayAr": "الإثنين", "dayTr": "Pazartesi", "dayEn": "Monday", "openTime": "00:00", "closeTime": "23:59", "isClosed": false },
+      { "dayAr": "الثلاثاء", "dayTr": "Salı", "dayEn": "Tuesday", "openTime": "00:00", "closeTime": "23:59", "isClosed": false },
+      { "dayAr": "الأربعاء", "dayTr": "Çarşamba", "dayEn": "Wednesday", "openTime": "00:00", "closeTime": "23:59", "isClosed": false },
+      { "dayAr": "الخميس", "dayTr": "Perşembe", "dayEn": "Thursday", "openTime": "00:00", "closeTime": "23:59", "isClosed": false },
+      { "dayAr": "الجمعة", "dayTr": "Cuma", "dayEn": "Friday", "openTime": "00:00", "closeTime": "23:59", "isClosed": false },
+      { "dayAr": "السبت", "dayTr": "Cumartesi", "dayEn": "Saturday", "openTime": "00:00", "closeTime": "23:59", "isClosed": false },
+      { "dayAr": "الأحد", "dayTr": "Pazar", "dayEn": "Sunday", "openTime": "00:00", "closeTime": "23:59", "isClosed": false }
+    ],
+    "faqs": [
+      {
+        "id": "faq-1",
+        "category": "Capabilities",
+        "questionAr": "ما هي المجالات والمهام التي يستطيع هذا الوكيل الذكي إنجازها؟",
+        "questionTr": "Bu yapay zeka ajanı hangi alanlarda ve görevlerde uzmanlaşmıştır?",
+        "questionEn": "What domains and tasks can this universal intelligent agent handle?",
+        "answerAr": "الوكيل مصمم كعقل تنفيذي شامل: يبرمج ويحلل الأكواد، يكتب الأبحاث ويدقق الحقائق عبر الويب، يضع خطط الأعمال ويؤهل المبيعات، يجري الحسابات الرياضية والمالية المعقدة، ويترجم بين أكثر من 50 لغة.",
+        "answerTr": "Ajanımız genel zeka, tam teşekküllü yazılım geliştirme, web araştırması, iş geliştirme ve matematiksel analiz dahil tüm alanlarda çalışmaktadır.",
+        "answerEn": "The agent is an omni-capable execution engine: software coding, web research and fact-grounding, business strategy, precision mathematics, and multilingual translations."
+      },
+      {
+        "id": "faq-2",
+        "category": "Grounding & Accuracy",
+        "questionAr": "كيف يضمن الوكيل الذكي عدم اختلاق المعلومات (Zero Hallucination)؟",
+        "questionTr": "Yapay zeka ajanı bilgilerin doğruluğunu nasıl garanti eder?",
+        "questionEn": "How does the agent ensure zero hallucination and high factual accuracy?",
+        "answerAr": "يعتمد الوكيل على محرك تحقق متعدد الطبقات: يستشير قاعدة المعرفة المعتمدة، يفحص المصادر الرسمية Tier 1 عبر Google Search Grounding، ويخضع المهارات لاختبارات وحدة تلقائية قبل اعتمادها.",
+        "answerTr": "Doğrulanmış bilgi tabanı, Google Arama doğrulaması ve otomatik birim testleriyle desteklenen çok katmanlı denetim motoru kullanır.",
+        "answerEn": "The agent relies on a multi-tier verification engine: consulting verified knowledge bases, live Google Search grounding on Tier 1 sources, and automated unit test suites."
+      },
+      {
+        "id": "faq-3",
+        "category": "Integration",
+        "questionAr": "هل يمكنني تخصيص هذا الوكيل لشركتي أو مجالي الخاص؟",
+        "questionTr": "Bu ajanı kendi şirketim veya sektörüm için özelleştirebilir miyim?",
+        "questionEn": "Can I customize this agent for my own specific company or industry?",
+        "answerAr": "نعم تماماً! يمكنك تعديل قاعدة المعرفة، إضافة منتجاتك أو خدماتك، تحديد قواعد المالك الصارمة، أو اختيار أحد القوالب الجاهزة (برمجة، تجارة، استشارات، عقارات، أو مخصص).",
+        "answerTr": "Evet! Bilgi tabanını dilediğiniz gibi güncelleyebilir, ürünlerinizi ekleyebilir ve hazır sektör şablonlarından birini tek tıkla seçebilirsiniz.",
+        "answerEn": "Yes! You can edit the knowledge base, add custom products/services, define strict owner rules, or switch between pre-built domain templates with one click."
+      }
+    ],
+    "policies": [
+      {
+        "id": "pol-1",
+        "titleAr": "سياسة الدقة والمصداقية العلمية",
+        "titleTr": "Bilimsel Doğruluk ve Kaynak Güvencesi",
+        "titleEn": "Scientific Accuracy & Fact Grounding Policy",
+        "contentAr": "يلتزم الوكيل بتقديم معلومات موثقة مع ذكر المصادر والروابط، والاعتراف الصريح بعدم المعرفة في حال عدم توفر مصادر مؤكدة.",
+        "contentTr": "Ajanımız her zaman doğrulanmış kaynaklara dayanır ve emin olunmayan konularda varsayım üretmez.",
+        "contentEn": "The agent strictly relies on grounded sources, providing transparent citations and refusing to invent unverified claims."
+      },
+      {
+        "id": "pol-2",
+        "titleAr": "سياسة الأمان والخصوصية وحماية البيانات",
+        "titleTr": "Veri Gizliliği ve Güvenlik Protokolü",
+        "titleEn": "Data Privacy & Tool Sandbox Security Policy",
+        "contentAr": "جميع العمليات الحساسة التي تعدل البيانات أو تستدعي واجهات خارجية تتطلب موافقة بشرية مسبقة، مع تشفير وحماية تامة لبيانات المستخدمين.",
+        "contentTr": "Hassas işlemler sandbox ortamında korunur ve harici sistem değişiklikleri için insan onayı şart koşulur.",
+        "contentEn": "Sensitive write actions and external API executions are gated by human-in-the-loop approvals, with complete encryption standards."
+      }
+    ]
+  },
+  "leads": [],
+  "conversations": [],
+  "handoffs": [],
+  "ownerRules": [
+    {
+      "id": "rule-1",
+      "rule": "Universal Problem Solving: Deliver structured, actionable, multi-disciplinary solutions tailored to user requests.",
+      "category": "behavior",
+      "priority": "High",
+      "addedAt": "2026-01-10T10:00:00.000Z",
+      "addedBy": "owner",
+      "active": true
+    },
+    {
+      "id": "rule-2",
+      "rule": "Strict Grounding: Never volunteer or invent unverified external claims, false numbers, or fake citations.",
+      "category": "policy",
+      "priority": "High",
+      "addedAt": "2026-01-10T10:00:00.000Z",
+      "addedBy": "owner",
+      "active": true
+    },
+    {
+      "id": "rule-3",
+      "rule": "Code & Math Excellence: When writing software or mathematical formulas, ensure full syntactical and algorithmic correctness.",
+      "category": "policy",
+      "priority": "High",
+      "addedAt": "2026-01-10T10:00:00.000Z",
+      "addedBy": "owner",
+      "active": true
+    }
+  ],
+  "ownerPreferences": {
+    "language": "ar",
+    "consultantName": "Universal AI Assistant",
+    "strictMode": true,
+    "autoResearchThreshold": 75,
+    "notifyOnConflicts": true
+  },
+  "verifiedExternalFacts": [
+    {
+      "id": "fact-1",
+      "claim": "Gemini 3.7 Flash natively supports advanced hybrid reasoning and real-time Google Search grounding.",
+      "evidence": "Official Google DeepMind Documentation and API specification.",
+      "sourceRecord": {
+        "id": "src-1",
+        "source_url": "https://ai.google.dev",
+        "source_title": "Google AI Developer Documentation",
+        "source_domain": "ai.google.dev",
+        "source_type": "Tier 1",
+        "publication_date": "2026-01-01",
+        "accessed_at": "2026-01-15T09:00:00.000Z",
+        "fact": "Gemini 3.7 Flash multi-modal reasoning and tool use capabilities.",
+        "confidence": 99,
+        "verification_status": "VERIFIED",
+        "expiration_date": "2026-12-31T23:59:59.000Z",
+        "category": "Technology",
+        "isExpired": false
+      },
+      "confidence": 99,
+      "informationCategory": "VERIFIED_FACT",
+      "category": "Technology",
+      "expiresAt": "2026-12-31T23:59:59.000Z",
+      "isExpired": false,
+      "verifiedAt": "2026-01-15T09:00:00.000Z",
+      "status": "VERIFIED"
+    }
+  ],
+  "learningCorrections": [
+    {
+      "id": "corr-1",
+      "originalClaim": "Limiting AI agent to single niche real estate.",
+      "correctedFact": "Agent is an omni-capable Universal Autonomous AI Agent covering all domains: tech, business, science, mathematics, and writing.",
+      "targetCategory": "Identity & Scope",
+      "correctedAt": "2026-01-18T14:30:00.000Z",
+      "source": "Owner Directive"
+    }
+  ],
+  "learningSuggestions": [],
+  "customerMemory": {},
+  "conversationInsights": [],
+  "sourceRecords": [],
+  "settings": {
+    "activeProvider": "gemini",
+    "model": "gemini-3.7-flash",
+    "temperature": 0.7,
+    "voiceEnabled": true
+  }
+}

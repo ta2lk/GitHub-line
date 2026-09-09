@@ -1,0 +1,6 @@
+{
+  "name": "Git2Live",
+  "description": "From GitHub to Live App - Turn any GitHub repository into a live testable web app directly in the browser with automated analysis, containerized builds, AI error repair, and live preview runtimes.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
