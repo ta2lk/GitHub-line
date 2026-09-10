@@ -8,6 +8,7 @@ import {
   BuildLogEntry
 } from '../../../src/types.js';
 import { createLogger } from '../../../packages/logger/src/index.js';
+import { modelRouter } from '../../ai-bridge/src/router.js';
 
 const logger = createLogger('AIRepairAgent');
 
@@ -31,12 +32,40 @@ export class AIRepairAgent {
   }
 
   /**
-   * Resiliently executes Gemini AI generation with graceful model failover
-   * Handles transient 503 high demand spikes and rate limits seamlessly.
+   * Resiliently executes AI generation using Universal AI Bridge first,
+   * then direct Gemini failover, and finally Autonomous DevOps Rule Engine.
    */
   private async executeGeminiWithFailover(
     prompt: string
   ): Promise<{ text: string; model: string } | null> {
+    // 1. Try Universal AI Bridge first
+    try {
+      logger.info('Attempting AI repair generation via Universal Model Router');
+      const bridgeResponse = await modelRouter.routeCompletion({
+        model: 'auto',
+        messages: [
+          { role: 'system', content: 'You are an autonomous senior DevOps repair engineer. Return valid JSON only.' },
+          { role: 'user', content: prompt }
+        ],
+        temperature: 0.2
+      });
+
+      const rawContent = bridgeResponse?.choices?.[0]?.message?.content;
+      const text = typeof rawContent === 'string'
+        ? rawContent
+        : Array.isArray(rawContent)
+          ? rawContent.map((p) => (p.type === 'text' ? p.text || '' : '')).join('')
+          : '';
+
+      if (text) {
+        logger.info(`AI repair analysis generated via AI Bridge (${bridgeResponse.model})`);
+        return { text, model: bridgeResponse.model };
+      }
+    } catch (bridgeErr: any) {
+      logger.info(`AI Bridge route completion fallback: ${bridgeErr?.message}`);
+    }
+
+    // 2. Direct Gemini failover
     const client = this.getAiClient();
     if (!client) return null;
 
@@ -49,7 +78,7 @@ export class AIRepairAgent {
     for (let i = 0; i < candidateModels.length; i++) {
       const candidate = candidateModels[i];
       try {
-        logger.info(`Attempting AI repair generation with model: ${candidate.name}`);
+        logger.info(`Attempting AI repair generation with direct model: ${candidate.name}`);
         const config: any = {
           responseMimeType: 'application/json'
         };
@@ -91,7 +120,7 @@ export class AIRepairAgent {
       }
     }
 
-    logger.info('Gemini models currently at peak capacity; seamlessly engaging Autonomous DevOps Rule Engine.');
+    logger.info('Upstream models currently at peak capacity; seamlessly engaging Autonomous DevOps Rule Engine.');
     return null;
   }
 

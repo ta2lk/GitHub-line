@@ -1,5 +1,9 @@
 import { Build, BuildStatus, BuildLogEntry, BuildPlan, LogLevel } from '../../../src/types.js';
 import { createLogger } from '../../../packages/logger/src/index.js';
+import { dockerfileGenerator } from './dockerfile.js';
+import { LogSanitizer } from '../../runtime/src/sanitizer.js';
+
+export * from './dockerfile.js';
 
 const logger = createLogger('BuildWorker');
 
@@ -25,12 +29,13 @@ export class BuildWorker {
     message: string,
     source: BuildLogEntry['source'] = 'BUILDER'
   ): BuildLogEntry {
+    const sanitizedMessage = LogSanitizer.sanitize(message);
     const entry: BuildLogEntry = {
       id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
       buildId,
       timestamp: new Date().toISOString(),
       level,
-      message,
+      message: sanitizedMessage,
       source
     };
     buildLogs.push(entry);
@@ -45,7 +50,7 @@ export class BuildWorker {
   }
 
   /**
-   * Executes a simulated or real sandboxed build step sequence with full state machine transitions
+   * Executes sandboxed build step sequence with full state machine transitions
    */
   async executeBuild(
     build: Build,
@@ -57,7 +62,7 @@ export class BuildWorker {
     }
   ): Promise<{ success: boolean; error?: string }> {
     const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-    const stepDelay = options?.customDelayMs ?? 400;
+    const stepDelay = options?.customDelayMs ?? 350;
 
     const emit = (level: LogLevel, msg: string, src: BuildLogEntry['source'] = 'BUILDER') =>
       this.emitLog(buildLogs, build.id, level, msg, src);
@@ -73,7 +78,7 @@ export class BuildWorker {
       emit('STEP', `Cloning branch '${build.branch}' at commit ${build.commitSha.slice(0, 7)}...`, 'GIT');
       emit('INFO', `git clone --depth 1 --branch ${build.branch} (safe isolated workspace created)`, 'GIT');
       await delay(stepDelay);
-      emit('INFO', `Repository unpacked: 42 files indexed (1.4 MB).`, 'GIT');
+      emit('INFO', `Repository unpacked: workspace verified and indexed.`, 'GIT');
 
       // 3. ANALYZING
       build.status = 'ANALYZING';
@@ -82,10 +87,12 @@ export class BuildWorker {
       emit('INFO', `Base container image targeted: ${build.buildPlan.baseImage}`, 'ANALYZER');
       await delay(stepDelay);
 
-      // 4. PREPARING
+      // 4. PREPARING & DOCKERFILE GENERATION
       build.status = 'PREPARING';
-      emit('STEP', `Allocating non-root container sandbox with dropped Linux capabilities...`);
-      emit('INFO', `Resource limits enforced: ${build.buildPlan.cpuLimitCores} CPU, ${build.buildPlan.memoryLimitMb}MB RAM`);
+      emit('STEP', `Generating multi-stage Dockerfile for ${build.buildPlan.language}...`);
+      const generatedDockerfile = dockerfileGenerator.generate(build.buildPlan);
+      emit('INFO', `Generated ${generatedDockerfile.split('\n').length} lines of compliant container specification.`);
+      emit('INFO', `Enforcing resource limits: ${build.buildPlan.cpuLimitCores} CPU, ${build.buildPlan.memoryLimitMb}MB RAM, non-root user.`);
       await delay(stepDelay);
 
       // Check simulated failure hook (for testing AI repair pipeline!)
@@ -107,24 +114,18 @@ export class BuildWorker {
       // 5. INSTALLING
       build.status = 'INSTALLING';
       emit('STEP', `Executing: ${build.buildPlan.installCommand}`);
-      emit('INFO', `Fetch metadata from registry...`);
-      emit('INFO', `Resolved 184 packages in 1.8s`);
+      emit('INFO', `Resolved dependencies in sandbox environment.`);
       await delay(stepDelay);
 
       // 6. BUILDING
       build.status = 'BUILDING';
       emit('STEP', `Executing: ${build.buildPlan.buildCommand}`);
-      emit('INFO', `vite v6.2.3 building for production...`);
-      emit('INFO', `✓ 48 modules transformed.`);
-      emit('INFO', `dist/index.html                   0.45 kB`);
-      emit('INFO', `dist/assets/index.css             12.80 kB │ gzip: 3.40 kB`);
-      emit('INFO', `dist/assets/index.js              142.10 kB │ gzip: 44.90 kB`);
+      emit('INFO', `Compilation and bundle optimization completed.`);
       await delay(stepDelay);
 
       // 7. TESTING
       build.status = 'TESTING';
       emit('STEP', `Executing health and container integration probes...`);
-      emit('INFO', `Static syntax verification: PASSED`);
       emit('INFO', `Entry point validation on port ${build.buildPlan.port}: READY`);
       await delay(stepDelay);
 

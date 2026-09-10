@@ -65,6 +65,36 @@ export class Git2LiveDatabase {
     this.users = [adminUser, demoUser];
 
     // 2. Initial Projects
+    const p0: Project = {
+      id: 'proj-openclaw-01',
+      userId: demoUser.id,
+      name: 'openclaw',
+      repositoryUrl: 'https://github.com/openclaw/openclaw',
+      defaultBranch: 'main',
+      currentCommitSha: 'a7b3c8f',
+      status: 'RUNNING',
+      framework: 'Node.js',
+      language: 'TypeScript',
+      port: 3000,
+      createdAt: new Date(Date.now() - 1 * 86400000).toISOString(),
+      updatedAt: new Date().toISOString(),
+      autoRebuildOnPush: true,
+      envCount: 4,
+      customDomain: 'openclaw.preview.git2live.dev',
+      category: 'ai-agent',
+      description: 'The AI that really does things. Autonomous AI developer assistant with universal cloud model connectivity, zero-key bridge, and live execution.',
+      topics: ['ai', 'assistant', 'openclaw', 'agents', 'tools', 'zero-key'],
+      aiRequirements: {
+        required: true,
+        providers: ['openai', 'gemini', 'anthropic', 'groq', 'together'],
+        sdk: ['openai', '@google/genai'],
+        capabilities: ['chat', 'reasoning', 'code'],
+        environmentVariables: ['OPENAI_API_KEY', 'GEMINI_API_KEY'],
+        models: ['gemini-3.6-flash', 'gpt-4o-mini'],
+        confidence: 0.99
+      }
+    };
+
     const p1: Project = {
       id: 'proj-vite-01',
       userId: demoUser.id,
@@ -117,9 +147,44 @@ export class Git2LiveDatabase {
       envCount: 1
     };
 
-    this.projects = [p1, p2, p3];
+    this.projects = [p0, p1, p2, p3];
 
     // 3. Builds
+    const b0: Build = {
+      id: 'bld-000-openclaw',
+      projectId: p0.id,
+      commitSha: 'a7b3c8f',
+      commitMessage: 'feat: activate OpenClaw agent studio with zero-key Universal AI Bridge',
+      branch: 'main',
+      status: 'SUCCESS',
+      buildPlan: {
+        language: 'TypeScript',
+        framework: 'Node.js',
+        version: 'node:20-alpine',
+        packageManager: 'pnpm',
+        installCommand: 'npm install',
+        buildCommand: 'npm run build',
+        startCommand: 'npm start',
+        port: 3000,
+        environment: {
+          NODE_ENV: 'production',
+          OPENAI_BASE_URL: 'http://localhost:3000/v1',
+          OPENAI_API_KEY: 'git2live-managed-token',
+          AI_BRIDGE_ENABLED: 'true'
+        },
+        baseImage: 'git2live/node:20',
+        timeoutSeconds: 600,
+        memoryLimitMb: 1024,
+        cpuLimitCores: 1.0
+      },
+      startedAt: new Date(Date.now() - 600000).toISOString(),
+      finishedAt: new Date(Date.now() - 580000).toISOString(),
+      durationSeconds: 20,
+      artifactPath: `/artifacts/${p0.id}/bld-000-openclaw/dist.tar.gz`,
+      logsCount: 6,
+      aiRepairAttempts: 0
+    };
+
     const b1: Build = {
       id: 'bld-001-vite',
       projectId: p1.id,
@@ -181,11 +246,21 @@ export class Git2LiveDatabase {
       aiRepairAttempts: 0
     };
 
-    this.builds = [b1, b3];
+    this.builds = [b0, b1, b3];
+    p0.latestBuild = b0;
     p1.latestBuild = b1;
     p3.latestBuild = b3;
 
-    // 4. Initial Logs for p1
+    // 4. Initial Logs for p0, p1, p3
+    const p0Logs: BuildLogEntry[] = [
+      { id: 'l-01', buildId: b0.id, timestamp: new Date(Date.now() - 600000).toISOString(), level: 'INFO', message: 'Analyzing OpenClaw AI agent architecture...', source: 'ANALYZER' },
+      { id: 'l-02', buildId: b0.id, timestamp: new Date(Date.now() - 597000).toISOString(), level: 'INFO', message: 'Injected Universal AI Bridge proxy credentials for OpenAI, Gemini & Anthropic SDKs.', source: 'SYSTEM' },
+      { id: 'l-03', buildId: b0.id, timestamp: new Date(Date.now() - 594000).toISOString(), level: 'STEP', message: 'Executing: pnpm install --frozen-lockfile', source: 'BUILDER' },
+      { id: 'l-04', buildId: b0.id, timestamp: new Date(Date.now() - 588000).toISOString(), level: 'STEP', message: 'Executing: pnpm run build', source: 'BUILDER' },
+      { id: 'l-05', buildId: b0.id, timestamp: new Date(Date.now() - 582000).toISOString(), level: 'INFO', message: '✓ Agent build compiled. Booting sandboxed Linux runtime...', source: 'BUILDER' },
+      { id: 'l-06', buildId: b0.id, timestamp: new Date(Date.now() - 580000).toISOString(), level: 'INFO', message: '● OpenClaw Autonomous Agent is RUNNING and listening on port 3000.', source: 'RUNTIME' }
+    ];
+
     const p1Logs: BuildLogEntry[] = [
       { id: 'l-1', buildId: b1.id, timestamp: new Date(Date.now() - 1200000).toISOString(), level: 'INFO', message: 'Build queued on worker worker-node-04.', source: 'SYSTEM' },
       { id: 'l-2', buildId: b1.id, timestamp: new Date(Date.now() - 1198000).toISOString(), level: 'STEP', message: 'Cloning repository at commit 9e4a81b2c...', source: 'GIT' },
@@ -205,9 +280,28 @@ export class Git2LiveDatabase {
       { id: 'l-34', buildId: b3.id, timestamp: new Date(Date.now() - 392000).toISOString(), level: 'ERROR', message: 'Process exited with code 1. Build FAILED.', source: 'BUILDER' }
     ];
 
-    this.buildLogs = [...p1Logs, ...p3Logs];
+    this.buildLogs = [...p0Logs, ...p1Logs, ...p3Logs];
 
-    // 5. Active Runtime for Project 1
+    // 5. Active Runtimes
+    const r0: RuntimeInstance = {
+      id: 'rt-openclaw-01',
+      projectId: p0.id,
+      buildId: b0.id,
+      containerId: 'cntr-openclaw-9901',
+      status: 'RUNNING',
+      port: 3000,
+      previewUrl: `/api/v1/preview/rt-openclaw-01`,
+      cpuLimit: 1.0,
+      memoryLimit: 1024,
+      cpuUsagePercent: 11.5,
+      memoryUsageMb: 142.6,
+      uptimeSeconds: 580,
+      startedAt: new Date(Date.now() - 580000).toISOString(),
+      lastActivity: new Date().toISOString(),
+      healthStatus: 'HEALTHY',
+      healthChecksFailed: 0
+    };
+
     const r1: RuntimeInstance = {
       id: 'rt-vite-8821',
       projectId: p1.id,
@@ -226,17 +320,39 @@ export class Git2LiveDatabase {
       healthStatus: 'HEALTHY',
       healthChecksFailed: 0
     };
-    this.runtimes = [r1];
+    this.runtimes = [r0, r1];
+    p0.activeRuntime = r0;
     p1.activeRuntime = r1;
 
     // 6. Environment Variables
     this.envVars = [
+      { id: 'env-0a', projectId: p0.id, key: 'NODE_ENV', value: 'production', isSecret: false, createdAt: new Date().toISOString() },
+      { id: 'env-0b', projectId: p0.id, key: 'OPENAI_BASE_URL', value: 'http://localhost:3000/v1', isSecret: false, createdAt: new Date().toISOString() },
+      { id: 'env-0c', projectId: p0.id, key: 'AI_BRIDGE_MODE', value: 'cloud-zero-key', isSecret: false, createdAt: new Date().toISOString() },
+      { id: 'env-0d', projectId: p0.id, key: 'AGENT_AUTONOMOUS', value: 'true', isSecret: false, createdAt: new Date().toISOString() },
       { id: 'env-1', projectId: p1.id, key: 'NODE_ENV', value: 'production', isSecret: false, createdAt: new Date().toISOString() },
       { id: 'env-2', projectId: p1.id, key: 'API_BASE_URL', value: 'https://api.git2live.dev/v1', isSecret: false, createdAt: new Date().toISOString() },
       { id: 'env-3', projectId: p1.id, key: 'DATABASE_SECRET_TOKEN', value: '••••••••••••••••', isSecret: true, createdAt: new Date().toISOString() }
     ];
 
     // 7. Workspace Virtual Files
+    const p0Files = new Map<string, string>();
+    p0Files.set('package.json', JSON.stringify({
+      name: "openclaw",
+      version: "2.4.1",
+      type: "module",
+      scripts: { build: "tsc", start: "node dist/index.js", dev: "tsx src/index.ts" },
+      dependencies: {
+        "@google/genai": "^0.1.1",
+        "openai": "^4.86.1",
+        "express": "^4.21.2",
+        "ws": "^8.18.0",
+        "dotenv": "^16.4.5"
+      }
+    }, null, 2));
+    p0Files.set('src/agent.ts', `import { GoogleGenAI } from '@google/genai';\n\nexport class OpenClawAgent {\n  constructor(private name: string = 'OpenClaw') {}\n  async act(goal: string) {\n    console.log(\`🦞 [\${this.name}] Executing autonomous goal: \${goal}\`);\n    return { success: true, status: 'completed' };\n  }\n}`);
+    this.workspaceFiles.set(p0.id, p0Files);
+
     const p1Files = new Map<string, string>();
     p1Files.set('package.json', JSON.stringify({
       name: "react-enterprise-dashboard",
@@ -315,7 +431,9 @@ export class Git2LiveDatabase {
       topics: data.topics || [],
       stars: data.stars || 0,
       category: data.category || 'web-app',
-      readme: data.readme || ''
+      readme: data.readme || '',
+      analysis: data.analysis,
+      aiRequirements: data.aiRequirements || data.analysis?.aiRequirements
     };
 
     this.projects.unshift(newProject);

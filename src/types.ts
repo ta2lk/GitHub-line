@@ -47,11 +47,23 @@ export type LanguageType =
   | 'Python'
   | 'Go'
   | 'Rust'
+  | 'Java'
+  | 'PHP'
   | 'Docker'
   | 'HTML/CSS'
   | 'Unknown';
 
 export type PackageManagerType = 'npm' | 'pnpm' | 'yarn' | 'bun' | 'pip' | 'poetry' | 'docker' | 'none';
+
+export interface AIRequirements {
+  required: boolean;
+  providers: string[];
+  sdk: string[];
+  capabilities: ('chat' | 'code' | 'vision' | 'embeddings' | 'reasoning')[];
+  environmentVariables: string[];
+  models: string[];
+  confidence: number;
+}
 
 export interface RepositoryAnalysis {
   repositoryUrl: string;
@@ -75,6 +87,7 @@ export interface RepositoryAnalysis {
   stars?: number;
   category?: 'web-app' | 'api-service' | 'ai-agent' | 'ui-library' | 'tool-cli' | 'python-app';
   readmeSnippet?: string;
+  aiRequirements?: AIRequirements;
 }
 
 export interface SecurityFinding {
@@ -264,6 +277,8 @@ export interface Project {
   stars?: number;
   category?: string;
   readme?: string;
+  analysis?: RepositoryAnalysis;
+  aiRequirements?: AIRequirements;
 }
 
 export interface AuditLog {

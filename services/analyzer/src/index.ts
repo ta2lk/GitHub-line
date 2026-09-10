@@ -1,6 +1,7 @@
-import { RepositoryAnalysis, FrameworkType, LanguageType, PackageManagerType, SecurityFinding } from '../../../src/types.js';
+import { RepositoryAnalysis, FrameworkType, LanguageType, PackageManagerType, SecurityFinding, AIRequirements } from '../../../src/types.js';
 import { gitHubProvider } from '../../github/src/index.js';
 import { createLogger } from '../../../packages/logger/src/index.js';
+import { aiDetector } from '../../ai-bridge/src/detector.js';
 
 const logger = createLogger('RepositoryAnalyzer');
 
@@ -50,6 +51,10 @@ export class RepositoryAnalyzer {
       Docker: 0,
       Agent: 0,
       Tailwind: 0,
+      Go: 0,
+      Rust: 0,
+      Java: 0,
+      PHP: 0,
       Static: 0
     };
 
@@ -69,7 +74,11 @@ export class RepositoryAnalyzer {
       managePy,
       dockerfile,
       readmeContent,
-      envFile
+      envFile,
+      goMod,
+      cargoToml,
+      pomXml,
+      composerJson
     ] = await Promise.all([
       fetchFile('package.json'),
       fetchFile('pnpm-lock.yaml'),
@@ -82,7 +91,11 @@ export class RepositoryAnalyzer {
       fetchFile('manage.py'),
       fetchFile('Dockerfile'),
       fetchFile('README.md'),
-      fetchFile('.env')
+      fetchFile('.env'),
+      fetchFile('go.mod'),
+      fetchFile('Cargo.toml'),
+      fetchFile('pom.xml'),
+      fetchFile('composer.json')
     ]);
 
     // Parse package.json
@@ -162,6 +175,26 @@ export class RepositoryAnalyzer {
       scores.Docker += 60;
     }
 
+    if (goMod) {
+      manifestsFound.push('go.mod');
+      scores.Go += 120;
+    }
+
+    if (cargoToml) {
+      manifestsFound.push('Cargo.toml');
+      scores.Rust += 120;
+    }
+
+    if (pomXml) {
+      manifestsFound.push('pom.xml');
+      scores.Java += 120;
+    }
+
+    if (composerJson) {
+      manifestsFound.push('composer.json');
+      scores.PHP += 120;
+    }
+
     // Secret Scanning on .env if found
     if (envFile) {
       manifestsFound.push('.env');
@@ -191,6 +224,10 @@ export class RepositoryAnalyzer {
 
     if (repoDetails.language === 'Python') scores.Python += 80;
     if (repoDetails.language === 'TypeScript' || repoDetails.language === 'JavaScript') scores.Node += 40;
+    if (repoDetails.language === 'Go') scores.Go += 80;
+    if (repoDetails.language === 'Rust') scores.Rust += 80;
+    if (repoDetails.language === 'Java') scores.Java += 80;
+    if (repoDetails.language === 'PHP') scores.PHP += 80;
 
     // Direct match on repo identity
     if (repoNameLower === 'react' || topicsLower.includes('react')) scores.React += 120;
@@ -209,6 +246,8 @@ export class RepositoryAnalyzer {
     else if (yarnLock) packageManager = 'yarn';
     else if (bunLock) packageManager = 'bun';
     else if (reqTxt || pyproject || setupPy || scores.Python > 0) packageManager = 'pip';
+    else if (goMod || scores.Go > 0) packageManager = 'none';
+    else if (cargoToml || scores.Rust > 0) packageManager = 'none';
     else if (dockerfile && !packageJsonContent) packageManager = 'docker';
 
     // Framework and Language Resolution based on scores
@@ -336,6 +375,46 @@ export class RepositoryAnalyzer {
       runtimeVersion = 'python:3.11-slim';
       confidence = 88;
       category = 'python-app';
+    } else if (scores.Go > 100 || repoDetails.language === 'Go') {
+      framework = 'Unknown';
+      language = 'Go';
+      port = 8080;
+      installCommand = 'go mod download';
+      buildCommand = 'go build -o app main.go';
+      startCommand = './app';
+      runtimeVersion = 'golang:1.22-alpine';
+      confidence = 94;
+      category = 'api-service';
+    } else if (scores.Rust > 100 || repoDetails.language === 'Rust') {
+      framework = 'Unknown';
+      language = 'Rust';
+      port = 8080;
+      installCommand = 'cargo build --release';
+      buildCommand = 'cargo build --release';
+      startCommand = './target/release/app';
+      runtimeVersion = 'rust:1.80-alpine';
+      confidence = 94;
+      category = 'api-service';
+    } else if (scores.Java > 100 || repoDetails.language === 'Java') {
+      framework = 'Unknown';
+      language = 'Java';
+      port = 8080;
+      installCommand = 'mvn clean package -DskipTests';
+      buildCommand = 'mvn package -DskipTests';
+      startCommand = 'java -jar target/*.jar';
+      runtimeVersion = 'maven:3.9-eclipse-temurin-21';
+      confidence = 92;
+      category = 'api-service';
+    } else if (scores.PHP > 100 || repoDetails.language === 'PHP') {
+      framework = 'Unknown';
+      language = 'PHP';
+      port = 8000;
+      installCommand = 'composer install';
+      buildCommand = 'echo "PHP ready"';
+      startCommand = 'php -S 0.0.0.0:8000 -t public';
+      runtimeVersion = 'php:8.3-cli-alpine';
+      confidence = 90;
+      category = 'web-app';
     } else if (scores.Docker > 50) {
       framework = 'Docker';
       language = 'Docker';
@@ -382,6 +461,27 @@ export class RepositoryAnalyzer {
       readmeSnippet = readmeContent.substring(0, 1000).trim();
     }
 
+    // Detect AI Requirements across all available files
+    const allRetrievedFiles: { path: string; content: string }[] = [];
+    if (packageJsonContent) allRetrievedFiles.push({ path: 'package.json', content: packageJsonContent });
+    if (reqTxt) allRetrievedFiles.push({ path: 'requirements.txt', content: reqTxt });
+    if (pyproject) allRetrievedFiles.push({ path: 'pyproject.toml', content: pyproject });
+    if (goMod) allRetrievedFiles.push({ path: 'go.mod', content: goMod });
+    if (cargoToml) allRetrievedFiles.push({ path: 'Cargo.toml', content: cargoToml });
+    if (pomXml) allRetrievedFiles.push({ path: 'pom.xml', content: pomXml });
+    if (composerJson) allRetrievedFiles.push({ path: 'composer.json', content: composerJson });
+    if (readmeContent) allRetrievedFiles.push({ path: 'README.md', content: readmeContent });
+    if (envFile) allRetrievedFiles.push({ path: '.env', content: envFile });
+
+    if (fileMap) {
+      fileMap.forEach((content, p) => allRetrievedFiles.push({ path: p, content }));
+    }
+
+    const aiRequirements = aiDetector.detect(allRetrievedFiles);
+    if (aiRequirements.required && category !== 'ai-agent') {
+      category = 'ai-agent';
+    }
+
     return {
       repositoryUrl: repoUrl,
       defaultBranch: activeBranch,
@@ -403,7 +503,8 @@ export class RepositoryAnalyzer {
       topics: repoDetails.topics,
       stars: repoDetails.stars,
       category,
-      readmeSnippet
+      readmeSnippet,
+      aiRequirements
     };
   }
 }

@@ -31,7 +31,9 @@ import {
   ArrowRight,
   Activity,
   AlertTriangle,
-  History
+  History,
+  Bot,
+  Zap
 } from 'lucide-react';
 import {
   Project,
@@ -78,7 +80,43 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
   const [iframeKey, setIframeKey] = useState(0);
   const [activeAppMode, setActiveAppMode] = useState<string>('');
 
+  const [chatMessages, setChatMessages] = useState<{ sender: 'user' | 'ai'; text: string; time: string }[]>([
+    { sender: 'ai', text: `مرحباً بك! أنا مساعد الذكاء الاصطناعي لمشروع ${project.name}. أنا هنا للإجابة على أسئلتك، مساعدة في كتابة الكود، وإصلاح الأخطاء. تفضل بطرح سؤالك!`, time: new Date().toLocaleTimeString() }
+  ]);
+  const [chatInput, setChatInput] = useState('');
+  const [selectedModel, setSelectedModel] = useState<string>('claude-3-5-sonnet');
+  const [isSendingChat, setIsSendingChat] = useState(false);
+  const chatMessagesEndRef = useRef<HTMLDivElement>(null);
+
   const logsEndRef = useRef<HTMLDivElement>(null);
+
+  const handleSendChatMessage = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!chatInput.trim() || isSendingChat) return;
+    const userText = chatInput.trim();
+    setChatInput('');
+    const newMsgTime = new Date().toLocaleTimeString();
+    setChatMessages((prev) => [...prev, { sender: 'user', text: userText, time: newMsgTime }]);
+    setIsSendingChat(true);
+
+    try {
+      const res = await fetch(`/api/v1/preview/${runtime?.id || project.id}/chat`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: userText, model: selectedModel })
+      });
+      const data = await res.json();
+      const aiReply = data.reply || data.message || 'عذراً، لم أتمكن من الحصول على رد.';
+      setChatMessages((prev) => [...prev, { sender: 'ai', text: aiReply, time: new Date().toLocaleTimeString() }]);
+    } catch (err) {
+      setChatMessages((prev) => [...prev, { sender: 'ai', text: 'حدث خطأ في الاتصال بالخادم. يرجى المحاولة مرة أخرى.', time: new Date().toLocaleTimeString() }]);
+    } finally {
+      setIsSendingChat(false);
+      setTimeout(() => {
+        chatMessagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      }, 100);
+    }
+  };
 
   // Sync initial tab when props change
   useEffect(() => {
@@ -225,6 +263,34 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
       console.error(e);
     } finally {
       setIsRepairing(false);
+    }
+  };
+
+  const [customRepairPrompt, setCustomRepairPrompt] = useState('');
+  const [isCustomRepairing, setIsCustomRepairing] = useState(false);
+
+  const handleCustomRepair = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!customRepairPrompt.trim() || isCustomRepairing) return;
+    setIsCustomRepairing(true);
+    try {
+      const res = await fetch(`/api/v1/projects/${project.id}/ai/custom-fix`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ instruction: customRepairPrompt })
+      });
+      const data = await res.json();
+      if (res.ok) {
+        setCustomRepairPrompt('');
+        alert('✨ تم إصلاح المشروع داخلياً بناءً على توجيهك وتم تشغيل البناء والحاوية بنجاح!');
+        loadProjectData();
+      } else {
+        alert('Error: ' + (data.error || 'Failed to apply custom fix'));
+      }
+    } catch (err: any) {
+      alert('Network error during self-repair: ' + err.message);
+    } finally {
+      setIsCustomRepairing(false);
     }
   };
 
@@ -398,6 +464,7 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
             { id: 'builds', label: 'Builds', icon: History, badge: builds.length },
             { id: 'logs', label: 'Live Logs', icon: Terminal },
             { id: 'preview', label: 'Runtime & Preview', icon: Play },
+            { id: 'chat', label: 'AI Chat Assistant', icon: Bot, highlight: true },
             { id: 'ai', label: 'AI Repair Studio', icon: Sparkles, highlight: isFailed },
             { id: 'editor', label: 'Code Editor', icon: Code2 },
             { id: 'env', label: 'Environment', icon: KeyRound, badge: envVars.length }
@@ -601,6 +668,104 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
                 <Sparkles className="w-3.5 h-3.5" />
                 Open AI Studio
               </button>
+            </div>
+          </div>
+
+          {/* Universal Cloud AI Models Bridge (Zero-Key Access) */}
+          <div className="bg-gradient-to-br from-indigo-950/20 via-purple-950/20 to-blue-950/20 border border-indigo-500/20 rounded-2xl p-5 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-400 shrink-0">
+                  <Bot className="w-5 h-5" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                      Universal Cloud AI Bridge (Zero-Key Access)
+                    </h3>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                      Active
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    All AI SDK calls (OpenAI, Gemini, Anthropic, LangChain) inside the container are automatically bridged to free cloud models without requiring API keys.
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-indigo-600 dark:text-indigo-400 font-mono bg-indigo-50 dark:bg-indigo-950/60 px-3 py-1.5 rounded-lg border border-indigo-500/30">
+                  Gateway: /v1/chat/completions
+                </span>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 pt-2">
+              <div className="bg-white/60 dark:bg-slate-900/60 border border-slate-200/60 dark:border-slate-800 rounded-xl p-3">
+                <div className="flex items-center justify-between text-xs font-semibold text-slate-700 dark:text-slate-200">
+                  <span>Google Gemini Flash</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400">
+                    Free Tier
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1 font-mono">gemini-3.8-flash</p>
+                <div className="flex items-center gap-1 text-[10px] text-emerald-500 mt-2">
+                  <Zap className="w-3 h-3" />
+                  <span>Sub-200ms latency</span>
+                </div>
+              </div>
+
+              <div className="bg-white/60 dark:bg-slate-900/60 border border-slate-200/60 dark:border-slate-800 rounded-xl p-3">
+                <div className="flex items-center justify-between text-xs font-semibold text-slate-700 dark:text-slate-200">
+                  <span>Groq Cloud Models</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400">
+                    High Speed
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1 font-mono">llama-3.3-70b</p>
+                <div className="flex items-center gap-1 text-[10px] text-blue-500 mt-2">
+                  <Zap className="w-3 h-3" />
+                  <span>300+ tok/s inference</span>
+                </div>
+              </div>
+
+              <div className="bg-white/60 dark:bg-slate-900/60 border border-slate-200/60 dark:border-slate-800 rounded-xl p-3">
+                <div className="flex items-center justify-between text-xs font-semibold text-slate-700 dark:text-slate-200">
+                  <span>OpenAI Compatibility</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-100 dark:bg-purple-950 text-purple-600 dark:text-purple-400">
+                    v1 Router
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1 font-mono">gpt-4o-mini route</p>
+                <div className="flex items-center gap-1 text-[10px] text-purple-500 mt-2">
+                  <CheckCircle2 className="w-3 h-3" />
+                  <span>Full SDK drop-in</span>
+                </div>
+              </div>
+
+              <div className="bg-white/60 dark:bg-slate-900/60 border border-slate-200/60 dark:border-slate-800 rounded-xl p-3">
+                <div className="flex items-center justify-between text-xs font-semibold text-slate-700 dark:text-slate-200">
+                  <span>Ollama Local Engine</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                    Zero Egress
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1 font-mono">qwen2.5 / llama3.2</p>
+                <div className="flex items-center gap-1 text-[10px] text-slate-400 mt-2">
+                  <Shield className="w-3 h-3" />
+                  <span>Local fallback ready</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="p-3 bg-slate-900/40 rounded-xl text-xs font-mono text-slate-300 flex flex-wrap items-center justify-between gap-2 border border-slate-800">
+              <div className="flex items-center gap-2">
+                <span className="text-slate-500">Injected Container Env:</span>
+                <span className="text-emerald-400">OPENAI_BASE_URL=http://localhost:3000/v1</span>
+                <span className="text-slate-600">|</span>
+                <span className="text-emerald-400">OPENAI_API_KEY=git2live-bridge-token</span>
+              </div>
+              <span className="text-slate-500 text-[11px]">Secrets Redacted Automatically</span>
             </div>
           </div>
         </div>
@@ -1036,6 +1201,36 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
             </button>
           </div>
 
+          {/* Interactive Custom Self-Repair Input Card */}
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 space-y-3 shadow-xs">
+            <div className="flex items-center gap-2">
+              <Bot className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+              <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                الإصلاح الداخلي التلقائي الموجه (Interactive Self-Repair)
+              </h3>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              أخبر الذكاء الاصطناعي بوجود خطأ معين (مثال: &quot;أصلح الزر في صفحة المكونات&quot; أو &quot;أضف دالة معالجة الأخطاء&quot;) ليقوم بتحليل الكود وتعديله داخلياً وإعادة البناء فوراً.
+            </p>
+            <form onSubmit={handleCustomRepair} className="flex flex-col sm:flex-row gap-2 pt-1">
+              <input
+                type="text"
+                placeholder="اكتب هنا الخطأ أو التعديل الذي تريد من الذكاء الاصطناعي إصلاحه داخلياً..."
+                value={customRepairPrompt}
+                onChange={(e) => setCustomRepairPrompt(e.target.value)}
+                className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-3 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 font-medium"
+              />
+              <button
+                type="submit"
+                disabled={isCustomRepairing || !customRepairPrompt.trim()}
+                className="px-6 py-3 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow-md transition active:scale-95 flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Sparkles className="w-4 h-4" />
+                <span>{isCustomRepairing ? 'جاري الإصلاح الداخلي...' : 'إصلاح داخلي فوري'}</span>
+              </button>
+            </form>
+          </div>
+
           {/* AI Repair Sessions History / Current Active Session */}
           {aiSessions.length === 0 ? (
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-8 text-center space-y-3">
@@ -1306,6 +1501,123 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
               </table>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ========================================================== */}
+      {/* TAB 8: AI CHAT ASSISTANT */}
+      {/* ========================================================== */}
+      {activeTab === 'chat' && (
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-xs flex flex-col h-[650px]">
+          <div className="p-4 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 bg-slate-50 dark:bg-slate-800/40">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center font-bold shadow-sm">
+                <Bot className="w-4 h-4" />
+              </div>
+              <div>
+                <h3 className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <span>AI Developer Assistant</span>
+                  <span className="px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-600 dark:text-indigo-400 text-[10px] font-semibold">
+                    Multi-Model
+                  </span>
+                </h3>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                  Powered by Claude 3.5 Sonnet, Manus Agent & Gemini
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end">
+              <select
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-1.5 text-xs text-slate-800 dark:text-slate-200 font-medium outline-none shadow-xs cursor-pointer"
+              >
+                <option value="claude-3-5-sonnet">Claude 3.5 Sonnet (Specialized)</option>
+                <option value="manus-reasoner">Manus Autonomous Agent</option>
+                <option value="gemini-3.6-flash">Gemini 3.6 Flash</option>
+                <option value="gpt-4o">GPT-4o Omni</option>
+              </select>
+
+              <div className="flex items-center gap-1.5 text-xs text-emerald-600 bg-emerald-50 dark:bg-emerald-950/60 px-2.5 py-1.5 rounded-xl border border-emerald-500/30">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="hidden md:inline">Connected</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Messages Container */}
+          <div className="flex-1 p-4 overflow-y-auto space-y-4 bg-slate-50/50 dark:bg-slate-950/40">
+            {chatMessages.map((msg, index) => (
+              <div
+                key={index}
+                className={`flex gap-3 ${msg.sender === 'user' ? 'justify-end' : 'justify-start'}`}
+              >
+                {msg.sender === 'ai' && (
+                  <div className="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center shrink-0 mt-0.5">
+                    <Bot className="w-3.5 h-3.5" />
+                  </div>
+                )}
+                <div
+                  className={`max-w-[80%] rounded-2xl px-4 py-3 text-xs leading-relaxed shadow-xs ${
+                    msg.sender === 'user'
+                      ? 'bg-blue-600 text-white rounded-br-none'
+                      : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-800 dark:text-slate-100 rounded-bl-none'
+                  }`}
+                >
+                  <p className="whitespace-pre-wrap">{msg.text}</p>
+                  <span
+                    className={`block text-[9px] mt-1.5 text-right ${
+                      msg.sender === 'user' ? 'text-blue-200' : 'text-slate-400'
+                    }`}
+                  >
+                    {msg.time}
+                  </span>
+                </div>
+                {msg.sender === 'user' && (
+                  <div className="w-7 h-7 rounded-lg bg-slate-700 text-white flex items-center justify-center shrink-0 mt-0.5">
+                    <span>U</span>
+                  </div>
+                )}
+              </div>
+            ))}
+            {isSendingChat && (
+              <div className="flex gap-3 justify-start items-center">
+                <div className="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center shrink-0">
+                  <Bot className="w-3.5 h-3.5" />
+                </div>
+                <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl px-4 py-3 text-xs text-slate-400 flex items-center gap-2">
+                  <span className="w-2 h-2 bg-blue-500 rounded-full animate-bounce" />
+                  <span className="w-2 h-2 bg-blue-500 rounded-full animate-bounce [animation-delay:0.2s]" />
+                  <span className="w-2 h-2 bg-blue-500 rounded-full animate-bounce [animation-delay:0.4s]" />
+                  <span className="ml-1 font-medium">جاري التفكير...</span>
+                </div>
+              </div>
+            )}
+            <div ref={chatMessagesEndRef} />
+          </div>
+
+          {/* Chat Input Form */}
+          <form
+            onSubmit={handleSendChatMessage}
+            className="p-3 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 flex items-center gap-2"
+          >
+            <input
+              type="text"
+              placeholder="اكتب رسالتك أو سؤالك البرمجي هنا..."
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-xs text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
+            />
+            <button
+              type="submit"
+              disabled={isSendingChat || !chatInput.trim()}
+              className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white text-xs font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-sm"
+            >
+              <span>إرسال</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          </form>
         </div>
       )}
     </div>

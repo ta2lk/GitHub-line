@@ -175,7 +175,7 @@ export function generateAgentStudioPreview(
             </div>
             <div class="flex justify-between text-slate-400">
               <span>النموذج اللغوي:</span>
-              <span class="text-indigo-400 font-bold">Gemini 3.8 Flash</span>
+              <span class="text-indigo-400 font-bold">Gemini 2.5 Flash (AI Bridge)</span>
             </div>
             <div class="flex justify-between text-slate-400">
               <span>الحاوية:</span>
