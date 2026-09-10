@@ -9,7 +9,7 @@ import { sandboxedRuntimeManager, dockerRuntimeManager } from './services/runtim
 import { generatePreviewHtml } from './services/runtime/src/previewGenerator.js';
 import { aiRepairAgent } from './services/ai-agent/src/index.js';
 import { cleanupWorker } from './services/cleanup/src/index.js';
-import { gitHubProvider } from './services/github/src/index.js';
+import { GitHubProvider, gitHubProvider } from './services/github/src/index.js';
 import { createAIBridgeGateway } from './services/ai-bridge/src/gateway.js';
 import { modelRouter } from './services/ai-bridge/src/router.js';
 import { aiInjector } from './services/ai-bridge/src/injector.js';
@@ -732,7 +732,22 @@ dispatchWorker("run_pipeline").then(console.log);
     try {
       const result = await runSelfDevelopment(project.name, project.framework, instruction, workspaceFiles);
 
-      // Commit only after the complete plan has passed validation.
+      const githubTarget = GitHubProvider.validateUrl(project.repositoryUrl);
+      if (!githubTarget.valid || !githubTarget.owner || !githubTarget.repo || githubTarget.owner === 'custom') {
+        return res.status(422).json({ error: 'Self-development requires a valid github.com repository URL.' });
+      }
+
+      // Publish to an isolated branch first. Workspace state is updated only after GitHub accepts it.
+      const githubPublish = await gitHubProvider.publishChanges(
+        githubTarget.owner,
+        githubTarget.repo,
+        project.defaultBranch || 'main',
+        result.changes.map(({ path, content }) => ({ path, content })),
+        `Git2Live self-development: ${instruction.trim()}`,
+        process.env.GITHUB_OPEN_PULL_REQUEST === 'true'
+      );
+
+      // Commit locally only after the remote GitHub commit succeeds.
       for (const change of result.changes) {
         db.setWorkspaceFile(project.id, change.path, change.content);
         db.addAuditLog('AI_FILE_EDITED', {
@@ -814,7 +829,11 @@ dispatchWorker("run_pipeline").then(console.log);
         }
       }, 100);
 
-      res.status(202).json({ ...session, changes: result.changes.map(({ path, reason }) => ({ path, reason })) });
+      res.status(202).json({
+        ...session,
+        changes: result.changes.map(({ path, reason }) => ({ path, reason })),
+        github: githubPublish
+      });
     } catch (err: any) {
       res.status(422).json({ error: err.message || 'Self-development failed; no files were changed.' });
     }

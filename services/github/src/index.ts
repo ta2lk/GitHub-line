@@ -29,6 +29,29 @@ export class GitHubSecurityException extends Error {
   }
 }
 
+
+
+export interface GitHubChange {
+  path: string;
+  content: string;
+}
+
+export interface GitHubPublishResult {
+  owner: string;
+  repo: string;
+  branch: string;
+  commitSha: string;
+  commitUrl: string;
+  pullRequestUrl?: string;
+}
+
+export class GitHubWriteException extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'GitHubWriteException';
+  }
+}
+
 export class GitHubProvider {
   /**
    * SSRF and Protocol Validator (Rules 15 & 100)
@@ -148,6 +171,101 @@ export class GitHubProvider {
       stars: 0,
       homepage: '',
       language: ''
+    };
+  }
+
+  /**
+   * Publish validated workspace changes to a new GitHub branch.
+   * The token is read only from the host environment and never returned to callers.
+   */
+  async publishChanges(
+    owner: string,
+    repo: string,
+    baseBranch: string,
+    changes: GitHubChange[],
+    commitMessage: string,
+    openPullRequest = false
+  ): Promise<GitHubPublishResult> {
+    const token = process.env.GITHUB_TOKEN || process.env.GITHUB_PAT;
+    if (!token) {
+      throw new GitHubWriteException('GitHub write access is not configured. Set GITHUB_TOKEN in the server environment.');
+    }
+    if (!/^[A-Za-z0-9._-]+$/.test(owner) || !/^[A-Za-z0-9._-]+$/.test(repo)) {
+      throw new GitHubWriteException('Invalid GitHub repository owner or name.');
+    }
+    if (!changes.length) throw new GitHubWriteException('No changes to publish.');
+    if (changes.length > 12) throw new GitHubWriteException('A single development task may publish at most 12 files.');
+
+    const api = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
+    const headers: Record<string, string> = {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+      'User-Agent': 'Git2Live-ControlPlane/1.0',
+      'Content-Type': 'application/json'
+    };
+
+    const request = async (url: string, init: RequestInit = {}) => {
+      const response = await fetch(url, { ...init, headers: { ...headers, ...(init.headers || {}) } });
+      const body = await response.text();
+      let data: any = {};
+      try { data = body ? JSON.parse(body) : {}; } catch { data = { message: body }; }
+      if (!response.ok) {
+        throw new GitHubWriteException(`GitHub API ${response.status}: ${data.message || 'request failed'}`);
+      }
+      return data;
+    };
+
+    const baseRef = await request(`${api}/git/ref/heads/${encodeURIComponent(baseBranch)}`);
+    const baseSha = baseRef.object?.sha;
+    if (!baseSha) throw new GitHubWriteException(`Could not resolve base branch ${baseBranch}.`);
+    const baseCommit = await request(`${api}/git/commits/${baseSha}`);
+    const branch = `git2live/self-dev-${new Date().toISOString().replace(/[-:TZ.]/g, '').slice(0, 14)}-${Math.random().toString(36).slice(2, 7)}`;
+
+    const treeEntries = [];
+    for (const change of changes) {
+      const blob = await request(`${api}/git/blobs`, {
+        method: 'POST',
+        body: JSON.stringify({ content: change.content, encoding: 'utf-8' })
+      });
+      treeEntries.push({ path: change.path, mode: '100644', type: 'blob', sha: blob.sha });
+    }
+
+    const tree = await request(`${api}/git/trees`, {
+      method: 'POST',
+      body: JSON.stringify({ base_tree: baseCommit.tree?.sha, tree: treeEntries })
+    });
+    const commit = await request(`${api}/git/commits`, {
+      method: 'POST',
+      body: JSON.stringify({ message: commitMessage.slice(0, 200), tree: tree.sha, parents: [baseSha] })
+    });
+    await request(`${api}/git/refs`, {
+      method: 'POST',
+      body: JSON.stringify({ ref: `refs/heads/${branch}`, sha: commit.sha })
+    });
+
+    let pullRequestUrl: string | undefined;
+    if (openPullRequest) {
+      const pr = await request(`${api}/pulls`, {
+        method: 'POST',
+        body: JSON.stringify({
+          title: commitMessage.slice(0, 120),
+          head: branch,
+          base: baseBranch,
+          body: 'Created by Git2Live autonomous development agent from an explicit user instruction.\n\nPlease review the changed files before merging.'
+        })
+      });
+      pullRequestUrl = pr.html_url;
+    }
+
+    logger.info(`Published ${changes.length} file(s) to ${owner}/${repo}:${branch}`);
+    return {
+      owner,
+      repo,
+      branch,
+      commitSha: commit.sha,
+      commitUrl: commit.html_url || `https://github.com/${owner}/${repo}/commit/${commit.sha}`,
+      pullRequestUrl
     };
   }
 
