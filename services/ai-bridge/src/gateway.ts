@@ -9,9 +9,23 @@ export function createAIBridgeGateway() {
   const router = express.Router();
   router.use(express.json({ limit: '10mb' }));
 
+  // The bridge is an internal credential boundary. Never expose it anonymously
+  // in production: otherwise any public caller can spend provider quota.
+  router.use((req, res, next) => {
+    const expected = process.env.AI_BRIDGE_TOKEN;
+    const supplied = req.header('authorization')?.replace(/^Bearer\s+/i, '') || req.header('x-ai-bridge-token');
+    if (process.env.NODE_ENV === 'production' && (!expected || supplied !== expected)) {
+      return res.status(401).json({ error: { message: 'AI Bridge authentication is required.' } });
+    }
+    next();
+  });
+
   // CORS for sandboxed internal network containers
   router.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
+    const allowedOrigin = process.env.APP_URL || process.env.ALLOWED_ORIGIN;
+    const requestOrigin = req.header('origin');
+    if (allowedOrigin && requestOrigin === allowedOrigin) res.header('Access-Control-Allow-Origin', allowedOrigin);
+    res.header('Vary', 'Origin');
     res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
     res.header('Access-Control-Allow-Headers', 'Content-Type, Authorization');
     if (req.method === 'OPTIONS') return res.sendStatus(200);

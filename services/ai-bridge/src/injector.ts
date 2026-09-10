@@ -24,11 +24,15 @@ export class AIBridgeInjector {
     // 1. OpenAI SDK / LangChain / LlamaIndex redirection
     env['OPENAI_BASE_URL'] = bridgeV1;
     env['OPENAI_API_BASE'] = bridgeV1;
-    env['OPENAI_API_KEY'] = 'git2live-managed-bridge-token';
+    const bridgeToken = process.env.AI_BRIDGE_TOKEN;
+    if (!bridgeToken) {
+      throw new Error('AI_BRIDGE_TOKEN must be configured before enabling AI access for a project.');
+    }
+    env['OPENAI_API_KEY'] = bridgeToken;
 
     // 2. Anthropic SDK redirection
     env['ANTHROPIC_BASE_URL'] = bridgeV1;
-    env['ANTHROPIC_API_KEY'] = 'git2live-managed-bridge-token';
+    env['ANTHROPIC_API_KEY'] = bridgeToken;
 
     // 3. Ollama SDK redirection
     env['OLLAMA_HOST'] = bridgeHost;
@@ -36,11 +40,11 @@ export class AIBridgeInjector {
 
     // 4. Groq / Together / OpenRouter compatibility
     env['GROQ_API_BASE'] = bridgeV1;
-    env['GROQ_API_KEY'] = 'git2live-managed-bridge-token';
+    env['GROQ_API_KEY'] = bridgeToken;
     env['TOGETHER_BASE_URL'] = bridgeV1;
-    env['TOGETHER_API_KEY'] = 'git2live-managed-bridge-token';
+    env['TOGETHER_API_KEY'] = bridgeToken;
     env['OPENROUTER_BASE_URL'] = bridgeV1;
-    env['OPENROUTER_API_KEY'] = 'git2live-managed-bridge-token';
+    env['OPENROUTER_API_KEY'] = bridgeToken;
 
     // 5. Standard Unified Platform Variables
     env['AI_GATEWAY_URL'] = bridgeV1;

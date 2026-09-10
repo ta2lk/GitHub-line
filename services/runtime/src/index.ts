@@ -29,19 +29,12 @@ export class SandboxedRuntimeManager implements RuntimeProvider {
     const previewUrl = `/api/v1/preview/${runtimeId}`;
 
     const isDocker = await dockerRuntimeManager.isDockerAvailable();
-    let containerId = `cntr-${Math.random().toString(36).substring(2, 10)}`;
-
-    if (isDocker) {
-      try {
-        const dockerResult = await dockerRuntimeManager.createContainer('node:20-alpine', containerPort, {
-          PORT: String(containerPort),
-          NODE_ENV: 'production'
-        });
-        containerId = dockerResult.containerId;
-      } catch (err: any) {
-        logger.warn(`Docker creation fallback: ${err.message}`);
-      }
-    }
+    if (!isDocker) throw new Error('A Docker daemon is required for a real project runtime; no simulated runtime was created.');
+    const dockerResult = await dockerRuntimeManager.createContainer('node:20-alpine', containerPort, {
+      PORT: String(containerPort),
+      NODE_ENV: 'production'
+    });
+    const containerId = dockerResult.containerId;
 
     const instance: RuntimeInstance = {
       id: runtimeId,
@@ -63,7 +56,7 @@ export class SandboxedRuntimeManager implements RuntimeProvider {
     };
 
     this.instances.set(runtimeId, instance);
-    logger.info(`Runtime container created: ${runtimeId} on port ${containerPort} (Docker: ${isDocker ? 'active' : 'virtual'})`);
+    logger.info(`Runtime container created: ${runtimeId} on port ${containerPort} (Docker: active)`);
     return instance;
   }
 
@@ -71,13 +64,8 @@ export class SandboxedRuntimeManager implements RuntimeProvider {
     const inst = this.instances.get(runtimeId);
     if (!inst) throw new Error(`Runtime ${runtimeId} not found`);
 
-    if (await dockerRuntimeManager.isDockerAvailable()) {
-      try {
-        await dockerRuntimeManager.startContainer(inst.containerId);
-      } catch (err: any) {
-        logger.warn(`Docker start fallback: ${err.message}`);
-      }
-    }
+    if (!(await dockerRuntimeManager.isDockerAvailable())) throw new Error('Docker daemon is unavailable; runtime was not started.');
+    await dockerRuntimeManager.startContainer(inst.containerId);
 
     inst.status = 'RUNNING';
     inst.startedAt = new Date().toISOString();

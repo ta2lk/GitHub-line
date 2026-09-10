@@ -18,6 +18,21 @@ import { runSelfDevelopment } from './services/self_developer.js';
 
 dotenv.config();
 
+function hasValidPlatformToken(req: Request): boolean {
+  const configured = process.env.PLATFORM_CONTROL_TOKEN;
+  if (!configured) return process.env.NODE_ENV !== 'production';
+  const supplied = req.header('authorization')?.replace(/^Bearer\s+/i, '') || req.header('x-platform-token');
+  return Boolean(supplied && supplied === configured);
+}
+
+function requirePlatformToken(req: Request, res: Response, next: () => void) {
+  if (!hasValidPlatformToken(req)) {
+    res.status(401).json({ error: 'Platform control authentication is required.' });
+    return;
+  }
+  next();
+}
+
 // Start background cleanup daemon
 cleanupWorker.start(60000);
 
@@ -29,7 +44,10 @@ async function startServer() {
 
   // CORS and Security Headers
   app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
+    const allowedOrigin = process.env.APP_URL || process.env.ALLOWED_ORIGIN;
+    const requestOrigin = req.header('origin');
+    if (allowedOrigin && requestOrigin === allowedOrigin) res.header('Access-Control-Allow-Origin', allowedOrigin);
+    res.header('Vary', 'Origin');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
     if (req.method === 'OPTIONS') {
@@ -44,7 +62,6 @@ async function startServer() {
   const aiGateway = createAIBridgeGateway();
   app.use('/api/v1/ai-bridge', aiGateway);
   app.use('/v1', aiGateway);
-  app.use('/', aiGateway);
 
   // ==========================================
   // HEALTH & OBSERVABILITY ENDPOINTS (#182)
@@ -83,7 +100,7 @@ async function startServer() {
     res.json(db.getCurrentUser());
   });
 
-  app.post('/api/v1/auth/role', (req: Request, res: Response) => {
+  app.post('/api/v1/auth/role', requirePlatformToken, (req: Request, res: Response) => {
     const { role } = req.body;
     const user = db.getCurrentUser();
     if (role && ['USER', 'ADMIN', 'SUPER_ADMIN'].includes(role)) {
@@ -285,11 +302,15 @@ async function startServer() {
       });
 
       if (result.success) {
-        project.status = 'READY';
-        // Auto start runtime for seamless "From GitHub to Live App" experience
-        const runtime = await sandboxedRuntimeManager.create(project.id, build.id, project.port);
-        await sandboxedRuntimeManager.start(runtime.id);
-        db.setRuntime(runtime);
+        try {
+          const runtime = await sandboxedRuntimeManager.create(project.id, build.id, project.port);
+          await sandboxedRuntimeManager.start(runtime.id);
+          db.setRuntime(runtime);
+          project.status = 'RUNNING';
+        } catch (runtimeError: any) {
+          project.status = 'ERROR';
+          db.addAuditLog('RUNTIME_START_FAILED', { projectId: project.id, error: runtimeError.message });
+        }
       } else {
         project.status = 'BUILD_FAILED';
       }
@@ -703,10 +724,15 @@ dispatchWorker("run_pipeline").then(console.log);
           const logsRef = db.getBuildLogsRef();
           const result = await buildWorker.executeBuild(newBuild, logsRef, { simulateFailure: false });
           if (result.success) {
-            project.status = 'READY';
-            const runtime = await sandboxedRuntimeManager.create(project.id, newBuild.id, project.port);
-            await sandboxedRuntimeManager.start(runtime.id);
-            db.setRuntime(runtime);
+            try {
+              const runtime = await sandboxedRuntimeManager.create(project.id, newBuild.id, project.port);
+              await sandboxedRuntimeManager.start(runtime.id);
+              db.setRuntime(runtime);
+              project.status = 'RUNNING';
+            } catch (runtimeError: any) {
+              project.status = 'ERROR';
+              db.addAuditLog('RUNTIME_START_FAILED', { projectId: project.id, error: runtimeError.message });
+            }
           }
         }, 100);
       }
@@ -719,7 +745,7 @@ dispatchWorker("run_pipeline").then(console.log);
 
   // Custom User-Instructed Self-Development endpoint
   // Applies validated multi-file changes, records an auditable AI session, then rebuilds.
-  app.post('/api/v1/projects/:id/ai/custom-fix', async (req: Request, res: Response) => {
+  app.post('/api/v1/projects/:id/ai/custom-fix', requirePlatformToken, async (req: Request, res: Response) => {
     const project = db.getProjectById(req.params.id);
     if (!project) return res.status(404).json({ error: 'Project not found' });
 
@@ -820,10 +846,15 @@ dispatchWorker("run_pipeline").then(console.log);
         const logsRef = db.getBuildLogsRef();
         const buildResult = await buildWorker.executeBuild(newBuild, logsRef, { simulateFailure: false });
         if (buildResult.success) {
-          project.status = 'READY';
-          const runtime = await sandboxedRuntimeManager.create(project.id, newBuild.id, project.port);
-          await sandboxedRuntimeManager.start(runtime.id);
-          db.setRuntime(runtime);
+          try {
+            const runtime = await sandboxedRuntimeManager.create(project.id, newBuild.id, project.port);
+            await sandboxedRuntimeManager.start(runtime.id);
+            db.setRuntime(runtime);
+            project.status = 'RUNNING';
+          } catch (runtimeError: any) {
+            project.status = 'ERROR';
+            db.addAuditLog('RUNTIME_START_FAILED', { projectId: project.id, error: runtimeError.message });
+          }
         } else {
           project.status = 'BUILD_FAILED';
         }
@@ -869,7 +900,7 @@ dispatchWorker("run_pipeline").then(console.log);
     res.json({ path: filePath, content });
   });
 
-  app.post('/api/v1/projects/:id/files/save', (req: Request, res: Response) => {
+  app.post('/api/v1/projects/:id/files/save', requirePlatformToken, (req: Request, res: Response) => {
     const { path: filePath, content } = req.body;
     if (!filePath || content === undefined) {
       return res.status(400).json({ error: 'path and content are required' });
@@ -891,7 +922,7 @@ dispatchWorker("run_pipeline").then(console.log);
     res.json(db.getEnvVars(req.params.id));
   });
 
-  app.post('/api/v1/projects/:id/env', (req: Request, res: Response) => {
+  app.post('/api/v1/projects/:id/env', requirePlatformToken, (req: Request, res: Response) => {
     const { key, value, isSecret } = req.body;
     if (!key || value === undefined) return res.status(400).json({ error: 'Key and Value are required' });
     const envVar = db.addEnvVar(req.params.id, key, value, Boolean(isSecret));
