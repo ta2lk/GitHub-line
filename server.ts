@@ -14,6 +14,7 @@ import { createAIBridgeGateway } from './services/ai-bridge/src/gateway.js';
 import { modelRouter } from './services/ai-bridge/src/router.js';
 import { aiInjector } from './services/ai-bridge/src/injector.js';
 import { BuildPlan, AISession } from './src/types.js';
+import { runSelfDevelopment } from './services/self_developer.js';
 
 dotenv.config();
 
@@ -716,107 +717,106 @@ dispatchWorker("run_pipeline").then(console.log);
     }
   });
 
-  // Custom User-Instructed Self-Repair endpoint
+  // Custom User-Instructed Self-Development endpoint
+  // Applies validated multi-file changes, records an auditable AI session, then rebuilds.
   app.post('/api/v1/projects/:id/ai/custom-fix', async (req: Request, res: Response) => {
     const project = db.getProjectById(req.params.id);
     if (!project) return res.status(404).json({ error: 'Project not found' });
-    const { instruction } = req.body;
-    if (!instruction) return res.status(400).json({ error: 'Instruction is required' });
+
+    const { instruction } = req.body || {};
+    if (typeof instruction !== 'string' || !instruction.trim()) {
+      return res.status(400).json({ error: 'Instruction is required' });
+    }
 
     const workspaceFiles = db.getWorkspaceFiles(project.id);
     try {
-      const prompt = `You are an expert autonomous AI developer and self-repair engine.
-Project Name: ${project.name}
-Framework: ${project.framework}
-Files in workspace:
-${Array.from(workspaceFiles.keys()).join(', ')}
+      const result = await runSelfDevelopment(project.name, project.framework, instruction, workspaceFiles);
 
-User Instruction / Bug Report: "${instruction}"
-
-Analyze the project files and the user instruction. Return JSON in this exact structure:
-{
-  "rootCauseAnalysis": "Explanation of what needs to be fixed based on user instruction",
-  "repairPlan": "Steps taken",
-  "targetFile": "src/App.tsx or similar relative path",
-  "updatedContent": "complete updated content of the target file with the fix applied",
-  "status": "SUCCESS"
-}
-`;
-
-      const bridgeResponse = await modelRouter.routeCompletion({
-        model: 'auto',
-        messages: [
-          { role: 'system', content: 'You are an autonomous AI software engineer. Return strict JSON only.' },
-          { role: 'user', content: prompt }
-        ],
-        temperature: 0.2
-      });
-
-      const rawContent = bridgeResponse?.choices?.[0]?.message?.content;
-      let parsed: any = {};
-      try {
-        const cleaned = typeof rawContent === 'string' ? rawContent.replace(/```json/g, '').replace(/```/g, '').trim() : '';
-        parsed = JSON.parse(cleaned);
-      } catch (e) {
-        parsed = {
-          rootCauseAnalysis: `Applied requested fix for: ${instruction}`,
-          repairPlan: 'Updated file via self-repair agent',
-          targetFile: 'src/App.tsx',
-          updatedContent: workspaceFiles.get('src/App.tsx') || '',
-          status: 'SUCCESS'
-        };
+      // Commit only after the complete plan has passed validation.
+      for (const change of result.changes) {
+        db.setWorkspaceFile(project.id, change.path, change.content);
+        db.addAuditLog('AI_FILE_EDITED', {
+          projectId: project.id,
+          path: change.path,
+          instruction: instruction.slice(0, 240)
+        });
       }
 
-      if (parsed.targetFile && parsed.updatedContent) {
-        db.setWorkspaceFile(project.id, parsed.targetFile, parsed.updatedContent);
-      }
+      const latestBuild = db.getBuilds(project.id)[0];
+      const buildPlan = latestBuild?.buildPlan || {
+        language: project.language,
+        framework: project.framework,
+        version: project.language === 'Python' ? 'python:3.11-slim' : 'node:20-alpine',
+        packageManager: project.language === 'Python' ? 'pip' : 'npm',
+        installCommand: project.language === 'Python' ? 'pip install -r requirements.txt' : 'npm install',
+        buildCommand: project.language === 'Python' ? 'echo "No build"' : 'npm run build',
+        startCommand: project.language === 'Python'
+          ? `uvicorn main:app --host 0.0.0.0 --port ${project.port}`
+          : `npm run preview -- --host 0.0.0.0 --port ${project.port}`,
+        port: project.port,
+        environment: { NODE_ENV: 'production' },
+        baseImage: project.language === 'Python' ? 'git2live/python:3.11' : 'git2live/node:20',
+        timeoutSeconds: 600,
+        memoryLimitMb: 1024,
+        cpuLimitCores: 1.0
+      } as BuildPlan;
 
+      const now = new Date().toISOString();
       const session: AISession = {
-        id: 'fix-' + Math.random().toString(36).substring(2, 9),
+        id: `ai-dev-${Date.now().toString(36)}`,
         projectId: project.id,
-        buildId: 'manual-fix',
+        buildId: 'pending-rebuild',
         status: 'SUCCESS',
-        errorClassification: 'Syntax',
-        rootCauseAnalysis: parsed.rootCauseAnalysis || instruction,
-        repairPlan: parsed.repairPlan || 'User-instructed self-repair applied',
-        steps: [
-          {
-            stepNumber: 1,
-            title: 'Custom User Self-Repair',
-            status: 'SUCCESS',
-            description: instruction,
-            targetFile: parsed.targetFile || 'src/App.tsx',
-            diff: `+ Applied user instruction: ${instruction}`
-          }
-        ],
-        actions: [],
+        provider: result.provider,
+        model: result.model,
+        errorClassification: 'Unknown',
+        rootCauseAnalysis: result.rootCauseAnalysis,
+        repairPlan: result.repairPlan,
+        steps: result.changes.map((change, index) => ({
+          stepNumber: index + 1,
+          title: `Update ${change.path}`,
+          status: 'SUCCESS',
+          description: change.reason || 'Applied validated user-requested change.',
+          targetFile: change.path,
+          diff: 'Complete file content replaced after validation.'
+        })),
+        actions: result.changes.map((change) => ({
+          id: `action-${Date.now().toString(36)}-${change.path.replace(/[^a-z0-9]/gi, '-')}`,
+          tool: 'workspace.write',
+          arguments: { path: change.path, size: change.content.length },
+          result: { success: true },
+          timestamp: now,
+          success: true
+        })),
         repairAttempts: 1,
         maxRepairAttempts: 3,
-        tokensUsed: 1500,
-        startedAt: new Date().toISOString(),
-        provider: bridgeResponse.routingInfo?.resolvedProvider || 'gemini',
-        model: bridgeResponse.model || 'gemini-3.6-flash',
-        timestamp: new Date().toISOString()
-      } as AISession;
-
+        tokensUsed: result.tokensUsed,
+        startedAt: now,
+        finishedAt: now
+      };
       db.saveAiSession(session);
 
-      const newBuild = db.createBuild(project.id, [], 'user-fix');
-      newBuild.commitMessage = `Self-Repair Fix: ${instruction.slice(0, 40)}`;
+      const newBuild = db.createBuild(project.id, buildPlan, `self-dev-${Date.now().toString(36)}`, project.defaultBranch);
+      newBuild.commitMessage = `Self-development: ${instruction.trim().slice(0, 80)}`;
+      session.buildId = newBuild.id;
+      db.saveAiSession(session);
+
       setTimeout(async () => {
         const logsRef = db.getBuildLogsRef();
-        const result = await buildWorker.executeBuild(newBuild, logsRef, { simulateFailure: false });
-        if (result.success) {
+        const buildResult = await buildWorker.executeBuild(newBuild, logsRef, { simulateFailure: false });
+        if (buildResult.success) {
           project.status = 'READY';
           const runtime = await sandboxedRuntimeManager.create(project.id, newBuild.id, project.port);
           await sandboxedRuntimeManager.start(runtime.id);
           db.setRuntime(runtime);
+        } else {
+          project.status = 'BUILD_FAILED';
         }
       }, 100);
 
-      res.json(session);
+      res.status(202).json({ ...session, changes: result.changes.map(({ path, reason }) => ({ path, reason })) });
     } catch (err: any) {
-      res.status(500).json({ error: err.message || 'Custom fix failed' });
+      res.status(422).json({ error: err.message || 'Self-development failed; no files were changed.' });
     }
   });
 
