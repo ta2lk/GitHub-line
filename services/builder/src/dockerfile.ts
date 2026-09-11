@@ -6,6 +6,11 @@ export class DockerfileGenerator {
    * Enforces non-root execution and minimal attack surface.
    */
   public generate(plan: BuildPlan): string {
+    for (const command of [plan.installCommand, plan.buildCommand, plan.startCommand]) {
+      if (/[;&|`$<>\n\r]/.test(String(command || ''))) {
+        throw new Error('Unsafe shell metacharacter detected in Docker build plan.');
+      }
+    }
     const { language, framework, port = 3000, installCommand, buildCommand, startCommand } = plan;
 
     switch (language) {

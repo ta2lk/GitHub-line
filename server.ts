@@ -45,7 +45,7 @@ cleanupWorker.start(60000);
 
 async function startServer() {
   const app = express();
-  const PORT = 3000;
+  const PORT = Number(process.env.PORT || 3000);
 
   app.use(express.json());
 
@@ -79,12 +79,14 @@ async function startServer() {
 
   app.get('/api/ready', async (req: Request, res: Response) => {
     const isDocker = await dockerRuntimeManager.isDockerAvailable();
-    res.json({
-      status: 'ready',
-      database: 'connected',
+    const ready = isDocker || process.env.ALLOW_CONTROL_PLANE_WITHOUT_DOCKER === 'true';
+    res.status(ready ? 200 : 503).json({
+      status: ready ? 'ready' : 'degraded',
+      database: process.env.GIT2LIVE_DB_FILE ? 'persistent-json' : 'memory-only',
       workers: 'online',
       dockerAvailable: isDocker,
-      runtimes: sandboxedRuntimeManager.list().length
+      runtimes: sandboxedRuntimeManager.list().length,
+      reason: ready ? undefined : 'A real Docker runtime is required before project execution is ready.'
     });
   });
 
@@ -220,7 +222,7 @@ async function startServer() {
     }
   });
 
-  app.delete('/api/v1/projects/:id', (req: Request, res: Response) => {
+  app.delete('/api/v1/projects/:id', requirePlatformToken, (req: Request, res: Response) => {
     const success = db.deleteProject(req.params.id);
     if (!success) return res.status(404).json({ error: 'Project not found' });
     res.json({ success: true });
@@ -269,7 +271,7 @@ async function startServer() {
   });
 
   // Trigger Build execution (#20, #21, #90)
-  app.post('/api/v1/projects/:id/build', async (req: Request, res: Response) => {
+  app.post('/api/v1/projects/:id/build', requirePlatformToken, async (req: Request, res: Response) => {
     const project = db.getProjectById(req.params.id);
     if (!project) return res.status(404).json({ error: 'Project not found' });
 
@@ -313,13 +315,15 @@ async function startServer() {
     setTimeout(async () => {
       const logsRef = db.getBuildLogsRef();
       const result = await buildWorker.executeBuild(build, logsRef, {
+        repositoryUrl: project.repositoryUrl,
         simulateFailure: Boolean(simulateFailure),
         failureReason
       });
+      db.persistState();
 
       if (result.success) {
         try {
-          const runtime = await sandboxedRuntimeManager.create(project.id, build.id, project.port);
+          const runtime = await sandboxedRuntimeManager.create(project.id, build.id, project.port, build.artifactPath);
           await sandboxedRuntimeManager.start(runtime.id);
           db.setRuntime(runtime);
           project.status = 'RUNNING';
@@ -346,20 +350,21 @@ async function startServer() {
     res.json(runtimes[0] || null);
   });
 
-  app.post('/api/v1/projects/:id/runtime', async (req: Request, res: Response) => {
+  app.post('/api/v1/projects/:id/runtime', requirePlatformToken, async (req: Request, res: Response) => {
     const project = db.getProjectById(req.params.id);
     if (!project) return res.status(404).json({ error: 'Project not found' });
 
     const latestSuccessBuild = db.getBuilds(project.id).find((b) => b.status === 'SUCCESS');
     const buildId = latestSuccessBuild ? latestSuccessBuild.id : 'bld-latest';
 
-    const runtime = await sandboxedRuntimeManager.create(project.id, buildId, project.port);
+    if (!latestSuccessBuild?.artifactPath) return res.status(409).json({ error: 'No verified runtime artifact is available for this project.' });
+    const runtime = await sandboxedRuntimeManager.create(project.id, buildId, project.port, latestSuccessBuild.artifactPath);
     await sandboxedRuntimeManager.start(runtime.id);
     db.setRuntime(runtime);
     res.status(201).json(runtime);
   });
 
-  app.post('/api/v1/runtime/:id/start', async (req: Request, res: Response) => {
+  app.post('/api/v1/runtime/:id/start', requirePlatformToken, async (req: Request, res: Response) => {
     try {
       const runtime = await sandboxedRuntimeManager.start(req.params.id);
       db.setRuntime(runtime);
@@ -369,7 +374,7 @@ async function startServer() {
     }
   });
 
-  app.post('/api/v1/runtime/:id/stop', async (req: Request, res: Response) => {
+  app.post('/api/v1/runtime/:id/stop', requirePlatformToken, async (req: Request, res: Response) => {
     try {
       const runtime = await sandboxedRuntimeManager.stop(req.params.id);
       db.setRuntime(runtime);
@@ -379,7 +384,7 @@ async function startServer() {
     }
   });
 
-  app.post('/api/v1/runtime/:id/restart', async (req: Request, res: Response) => {
+  app.post('/api/v1/runtime/:id/restart', requirePlatformToken, async (req: Request, res: Response) => {
     try {
       const runtime = await sandboxedRuntimeManager.restart(req.params.id);
       db.setRuntime(runtime);
@@ -395,7 +400,7 @@ async function startServer() {
     res.json(runtime);
   });
 
-  app.delete('/api/v1/runtime/:id', async (req: Request, res: Response) => {
+  app.delete('/api/v1/runtime/:id', requirePlatformToken, async (req: Request, res: Response) => {
     const success = await sandboxedRuntimeManager.destroy(req.params.id);
     res.json({ success });
   });
@@ -588,7 +593,7 @@ dispatchWorker("run_pipeline").then(console.log);
     ) {
       reply = isArabic
         ? `🦞 **خصائص وقدرات وكيل OpenClaw في هذه الحاوية**:\n\n1. **الدردشة التفاعلية الذكية**: ناقشني في أي موضوع، فكرة برمجية، أو مسألة تقنية وسأرد عليك فوراً.\n2. **محرر الكود الحي**: اضغط على تبويب "محرر الكود الحي" لتكتب وتشغل كود JavaScript حقيقي داخل الحاوية.\n3. **محاكي الطرفية (Terminal)**: اضغط على تبويب "الطرفية" لتشغيل أوامر نظام مثل \`uname -a\` أو \`uptime\` أو \`env\`.\n4. **أدوات ومهارات الوكيل**: فحص السجلات، تحليل المستودع، واستدعاء الوظائف المدمجة.\n\nما الذي تود تجربته أولاً؟`
-        : `🦞 **OpenClaw Capabilities**:\n1. Interactive chat with immediate feedback\n2. Live code runner in sandbox environment\n3. Terminal simulation with live CLI tools\n4. Agent diagnostic and monitoring tools`;
+        : `🦞 **OpenClaw Capabilities**:\n1. Interactive chat with immediate feedback\n2. Live code runner when a verified runtime is connected\n3. Terminal commands only when a verified runtime is connected\n4. Agent diagnostic and monitoring tools`;
     } else {
       reply = isArabic
         ? `🦞 **استجابة فورية من OpenClaw**:\n\nاستلمت رسالتك: **"${message}"**\n\nتمت معالجة الطلب في دورة الوكيل بنجاح:\n- **البيئة**: حاوية Linux معزولة \`${runtime?.containerId || 'cntr-active'}\` على المنفذ \`:${project?.port || 5173}\`.\n- **الحالة**: الاستجابة نشطة ومحدثة، وجميع الأدوات البرمجية جاهزة.\n\nإذا كنت ترغب في كتابة كود مخصص، اختبار استدعاء API، أو تشغيل أوامر برمجية، اكتب لي التفاصيل أو استخدم التبويبات بالأسفل!`
@@ -670,10 +675,10 @@ dispatchWorker("run_pipeline").then(console.log);
         });
       }
     } else {
-      // General language simulation
-      return res.json({
-        success: true,
-        output: `[${language.toUpperCase()} RUNTIME] Executed in isolated sandbox:\nProcess finished with exit code 0`,
+      return res.status(501).json({
+        success: false,
+        code: 'REAL_EXECUTOR_NOT_CONFIGURED',
+        error: `Real ${language} execution is not configured; no simulated success is reported.`,
         executionTimeMs: Date.now() - startTime,
         timestamp: new Date().toISOString()
       });
@@ -703,7 +708,11 @@ dispatchWorker("run_pipeline").then(console.log);
     } else if (cmd.includes('openclaw')) {
       output = `OpenClaw Gateway v2.4.1\nPID: 104\nListening on: 0.0.0.0:5173\nStatus: Online & Ready`;
     } else {
-      output = `[bash: exec] ${cmd}\nCommand dispatched and completed successfully (exit code 0).`;
+      return res.status(501).json({
+        success: false,
+        code: 'REAL_TERMINAL_NOT_CONFIGURED',
+        error: 'This command was not executed because a real project runtime is not connected.'
+      });
     }
 
     res.json({ output, timestamp: new Date().toISOString() });
@@ -738,10 +747,11 @@ dispatchWorker("run_pipeline").then(console.log);
 
         setTimeout(async () => {
           const logsRef = db.getBuildLogsRef();
-          const result = await buildWorker.executeBuild(newBuild, logsRef, { simulateFailure: false });
+          const result = await buildWorker.executeBuild(newBuild, logsRef, { repositoryUrl: project.repositoryUrl });
+          db.persistState();
           if (result.success) {
             try {
-              const runtime = await sandboxedRuntimeManager.create(project.id, newBuild.id, project.port);
+              const runtime = await sandboxedRuntimeManager.create(project.id, newBuild.id, project.port, newBuild.artifactPath);
               await sandboxedRuntimeManager.start(runtime.id);
               db.setRuntime(runtime);
               project.status = 'RUNNING';
@@ -907,10 +917,11 @@ dispatchWorker("run_pipeline").then(console.log);
 
       setTimeout(async () => {
         const logsRef = db.getBuildLogsRef();
-        const buildResult = await buildWorker.executeBuild(newBuild, logsRef, { simulateFailure: false });
+        const buildResult = await buildWorker.executeBuild(newBuild, logsRef, { repositoryUrl: project.repositoryUrl });
+        db.persistState();
         if (buildResult.success) {
           try {
-            const runtime = await sandboxedRuntimeManager.create(project.id, newBuild.id, project.port);
+            const runtime = await sandboxedRuntimeManager.create(project.id, newBuild.id, project.port, newBuild.artifactPath);
             await sandboxedRuntimeManager.start(runtime.id);
             db.setRuntime(runtime);
             project.status = 'RUNNING';
