@@ -221,7 +221,7 @@ export interface AISession {
   id: string;
   projectId: string;
   buildId: string;
-  status: 'ANALYZING' | 'PLANNING' | 'PATCHING' | 'REBUILDING' | 'SUCCESS' | 'FAILED' | 'IDLE';
+  status: 'ANALYZING' | 'PLANNING' | 'AWAITING_APPROVAL' | 'PATCHING' | 'REBUILDING' | 'SUCCESS' | 'FAILED' | 'IDLE';
   provider: string;
   model: string;
   errorClassification: ErrorClassification;

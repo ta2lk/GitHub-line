@@ -280,10 +280,33 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
         body: JSON.stringify({ instruction: customRepairPrompt })
       });
       const data = await res.json();
-      if (res.ok) {
+      if (res.ok && data.pendingApproval) {
+        const filesSummary = (data.changes || []).map((change: { path: string; size: number }) => `• ${change.path} (${change.size} bytes)`).join('\n');
+        const approved = window.confirm(
+          `اقتراح تطوير ذاتي جاهز ولم يتم تعديل أي ملف بعد.\n\n` +
+          `التغييرات المقترحة:\n${filesSummary || 'لا توجد ملفات'}\n\n` +
+          `هل توافق على تطبيق هذه التغييرات ونشرها إلى فرع GitHub ثم إعادة البناء؟`
+        );
+        if (!approved) {
+          alert('تم رفض المقترح. لم يتم تعديل أي ملف أو نشر أي تغيير.');
+          return;
+        }
+        const approvalRes = await fetch(`/api/v1/projects/${project.id}/ai/custom-fix`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ instruction: customRepairPrompt.trim(), proposalId: data.proposalId, approve: true })
+        });
+        const approvalData = await approvalRes.json();
+        if (!approvalRes.ok) {
+          alert('لم يتم تطبيق المقترح: ' + (approvalData.error || 'فشلت الموافقة'));
+          return;
+        }
         setCustomRepairPrompt('');
-        alert('✨ تم إصلاح المشروع داخلياً بناءً على توجيهك وتم تشغيل البناء والحاوية بنجاح!');
+        alert('تمت الموافقة وتطبيق التغييرات، وبدأت عملية النشر وإعادة البناء.');
         loadProjectData();
+      } else if (res.ok) {
+        setCustomRepairPrompt('');
+        alert('تم إنشاء مقترح التطوير. لن يتم تعديل الملفات قبل موافقتك.');
       } else {
         alert('Error: ' + (data.error || 'Failed to apply custom fix'));
       }

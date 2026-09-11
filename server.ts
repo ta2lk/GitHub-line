@@ -18,6 +18,13 @@ import { runSelfDevelopment } from './services/self_developer.js';
 
 dotenv.config();
 
+const pendingSelfDevelopment = new Map<string, {
+  projectId: string;
+  instruction: string;
+  result: Awaited<ReturnType<typeof runSelfDevelopment>>;
+  expiresAt: number;
+}>();
+
 function hasValidPlatformToken(req: Request): boolean {
   const configured = process.env.PLATFORM_CONTROL_TOKEN;
   if (!configured) return process.env.NODE_ENV !== 'production';
@@ -749,14 +756,61 @@ dispatchWorker("run_pipeline").then(console.log);
     const project = db.getProjectById(req.params.id);
     if (!project) return res.status(404).json({ error: 'Project not found' });
 
-    const { instruction } = req.body || {};
+    const { instruction, proposalId, approve } = req.body || {};
     if (typeof instruction !== 'string' || !instruction.trim()) {
       return res.status(400).json({ error: 'Instruction is required' });
     }
 
     const workspaceFiles = db.getWorkspaceFiles(project.id);
     try {
-      const result = await runSelfDevelopment(project.name, project.framework, instruction, workspaceFiles);
+      let result: Awaited<ReturnType<typeof runSelfDevelopment>>;
+      if (proposalId) {
+        if (approve !== true) return res.status(400).json({ error: 'Explicit approve=true is required to apply a proposal.' });
+        const pending = pendingSelfDevelopment.get(String(proposalId));
+        if (!pending || pending.expiresAt < Date.now() || pending.projectId !== project.id || pending.instruction !== instruction.trim()) {
+          pendingSelfDevelopment.delete(String(proposalId));
+          return res.status(409).json({ error: 'Proposal not found, expired, or does not match this project and instruction.' });
+        }
+        result = pending.result;
+        pendingSelfDevelopment.delete(String(proposalId));
+        db.addAuditLog('AI_CHANGE_APPROVED', { projectId: project.id, proposalId });
+      } else {
+        result = await runSelfDevelopment(project.name, project.framework, instruction, workspaceFiles);
+        const id = `proposal-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+        pendingSelfDevelopment.set(id, {
+          projectId: project.id,
+          instruction: instruction.trim(),
+          result,
+          expiresAt: Date.now() + 15 * 60 * 1000
+        });
+        db.addAuditLog('AI_CHANGE_PROPOSED', { projectId: project.id, proposalId: id, files: result.changes.map((change) => change.path) });
+        const now = new Date().toISOString();
+        const proposalSession: AISession = {
+          id: `ai-proposal-${Date.now().toString(36)}`,
+          projectId: project.id,
+          buildId: 'awaiting-approval',
+          status: 'AWAITING_APPROVAL',
+          provider: result.provider,
+          model: result.model,
+          errorClassification: 'Unknown',
+          rootCauseAnalysis: result.rootCauseAnalysis,
+          repairPlan: result.repairPlan,
+          steps: result.changes.map((change, index) => ({ stepNumber: index + 1, title: `Proposed update ${change.path}`, status: 'PENDING', description: change.reason || 'Awaiting user approval.', targetFile: change.path })),
+          actions: [],
+          repairAttempts: 0,
+          maxRepairAttempts: 1,
+          tokensUsed: result.tokensUsed,
+          startedAt: now
+        };
+        db.saveAiSession(proposalSession);
+        return res.status(202).json({
+          pendingApproval: true,
+          proposalId: id,
+          expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+          session: proposalSession,
+          changes: result.changes.map(({ path, reason, content }) => ({ path, reason, size: content.length }))
+        });
+      }
 
       const githubTarget = GitHubProvider.validateUrl(project.repositoryUrl);
       if (!githubTarget.valid || !githubTarget.owner || !githubTarget.repo || githubTarget.owner === 'custom') {
