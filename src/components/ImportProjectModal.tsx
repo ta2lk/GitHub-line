@@ -106,7 +106,9 @@ export const ImportProjectModal: React.FC<ImportProjectModalProps> = ({
           description: analysis.description || '',
           topics: analysis.topics || [],
           category: analysis.category || 'web-app',
-          readme: analysis.readmeSnippet || ''
+          readme: analysis.readmeSnippet || '',
+          analysis,
+          aiRequirements: analysis.aiRequirements
         })
       });
 
@@ -114,7 +116,7 @@ export const ImportProjectModal: React.FC<ImportProjectModalProps> = ({
       if (!projRes.ok) throw new Error(newProj.error || 'Failed to create project');
 
       // 2. Trigger build immediately
-      await fetch(`/api/v1/projects/${newProj.id}/build`, {
+      const buildRes = await fetch(`/api/v1/projects/${newProj.id}/build`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -135,6 +137,8 @@ export const ImportProjectModal: React.FC<ImportProjectModalProps> = ({
           }
         })
       });
+      const buildData = await buildRes.json().catch(() => ({}));
+      if (!buildRes.ok) throw new Error(buildData.error || 'The project was created, but the build could not be started.');
 
       // Wait 2.2 seconds for container to spin up and register runtime
       await new Promise((resolve) => setTimeout(resolve, 2200));

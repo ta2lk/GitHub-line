@@ -269,21 +269,45 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
   const [customRepairPrompt, setCustomRepairPrompt] = useState('');
   const [isCustomRepairing, setIsCustomRepairing] = useState(false);
 
-  const handleCustomRepair = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!customRepairPrompt.trim() || isCustomRepairing) return;
+  const handleCustomRepair = async (e?: React.FormEvent, requestedInstruction?: string) => {
+    e?.preventDefault();
+    const instruction = (requestedInstruction ?? customRepairPrompt).trim();
+    if (!instruction || isCustomRepairing) return;
     setIsCustomRepairing(true);
     try {
       const res = await fetch(`/api/v1/projects/${project.id}/ai/custom-fix`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ instruction: customRepairPrompt })
+        body: JSON.stringify({ instruction })
       });
       const data = await res.json();
-      if (res.ok) {
+      if (res.ok && data.pendingApproval) {
+        const filesSummary = (data.changes || []).map((change: { path: string; size: number }) => `• ${change.path} (${change.size} bytes)`).join('\n');
+        const approved = window.confirm(
+          `اقتراح تطوير ذاتي جاهز ولم يتم تعديل أي ملف بعد.\n\n` +
+          `التغييرات المقترحة:\n${filesSummary || 'لا توجد ملفات'}\n\n` +
+          `هل توافق على تطبيق هذه التغييرات ونشرها إلى فرع GitHub ثم إعادة البناء؟`
+        );
+        if (!approved) {
+          alert('تم رفض المقترح. لم يتم تعديل أي ملف أو نشر أي تغيير.');
+          return;
+        }
+        const approvalRes = await fetch(`/api/v1/projects/${project.id}/ai/custom-fix`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ instruction, proposalId: data.proposalId, approve: true })
+        });
+        const approvalData = await approvalRes.json();
+        if (!approvalRes.ok) {
+          alert('لم يتم تطبيق المقترح: ' + (approvalData.error || 'فشلت الموافقة'));
+          return;
+        }
         setCustomRepairPrompt('');
-        alert('✨ تم إصلاح المشروع داخلياً بناءً على توجيهك وتم تشغيل البناء والحاوية بنجاح!');
+        alert('تمت الموافقة وتطبيق التغييرات، وبدأت عملية النشر وإعادة البناء.');
         loadProjectData();
+      } else if (res.ok) {
+        setCustomRepairPrompt('');
+        alert('تم إنشاء مقترح التطوير. لن يتم تعديل الملفات قبل موافقتك.');
       } else {
         alert('Error: ' + (data.error || 'Failed to apply custom fix'));
       }
@@ -1616,6 +1640,20 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
             >
               <span>إرسال</span>
               <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              disabled={isCustomRepairing || !chatInput.trim()}
+              onClick={() => {
+                const instruction = chatInput.trim();
+                setChatInput('');
+                void handleCustomRepair(undefined, instruction);
+              }}
+              title="اقتراح تعديل على الملفات ثم طلب موافقتك قبل التطبيق"
+              className="px-3 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-[11px] font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-sm whitespace-nowrap"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>اقتراح تعديل</span>
             </button>
           </form>
         </div>

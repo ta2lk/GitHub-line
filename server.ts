@@ -18,6 +18,28 @@ import { runSelfDevelopment } from './services/self_developer.js';
 
 dotenv.config();
 
+const pendingSelfDevelopment = new Map<string, {
+  projectId: string;
+  instruction: string;
+  result: Awaited<ReturnType<typeof runSelfDevelopment>>;
+  expiresAt: number;
+}>();
+
+function hasValidPlatformToken(req: Request): boolean {
+  const configured = process.env.PLATFORM_CONTROL_TOKEN;
+  if (!configured) return process.env.NODE_ENV !== 'production';
+  const supplied = req.header('authorization')?.replace(/^Bearer\s+/i, '') || req.header('x-platform-token');
+  return Boolean(supplied && supplied === configured);
+}
+
+function requirePlatformToken(req: Request, res: Response, next: () => void) {
+  if (!hasValidPlatformToken(req)) {
+    res.status(401).json({ error: 'Platform control authentication is required.' });
+    return;
+  }
+  next();
+}
+
 // Start background cleanup daemon
 cleanupWorker.start(60000);
 
@@ -29,7 +51,10 @@ async function startServer() {
 
   // CORS and Security Headers
   app.use((req, res, next) => {
-    res.header('Access-Control-Allow-Origin', '*');
+    const allowedOrigin = process.env.APP_URL || process.env.ALLOWED_ORIGIN;
+    const requestOrigin = req.header('origin');
+    if (allowedOrigin && requestOrigin === allowedOrigin) res.header('Access-Control-Allow-Origin', allowedOrigin);
+    res.header('Vary', 'Origin');
     res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
     res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Authorization');
     if (req.method === 'OPTIONS') {
@@ -44,7 +69,6 @@ async function startServer() {
   const aiGateway = createAIBridgeGateway();
   app.use('/api/v1/ai-bridge', aiGateway);
   app.use('/v1', aiGateway);
-  app.use('/', aiGateway);
 
   // ==========================================
   // HEALTH & OBSERVABILITY ENDPOINTS (#182)
@@ -83,7 +107,7 @@ async function startServer() {
     res.json(db.getCurrentUser());
   });
 
-  app.post('/api/v1/auth/role', (req: Request, res: Response) => {
+  app.post('/api/v1/auth/role', requirePlatformToken, (req: Request, res: Response) => {
     const { role } = req.body;
     const user = db.getCurrentUser();
     if (role && ['USER', 'ADMIN', 'SUPER_ADMIN'].includes(role)) {
@@ -285,11 +309,15 @@ async function startServer() {
       });
 
       if (result.success) {
-        project.status = 'READY';
-        // Auto start runtime for seamless "From GitHub to Live App" experience
-        const runtime = await sandboxedRuntimeManager.create(project.id, build.id, project.port);
-        await sandboxedRuntimeManager.start(runtime.id);
-        db.setRuntime(runtime);
+        try {
+          const runtime = await sandboxedRuntimeManager.create(project.id, build.id, project.port);
+          await sandboxedRuntimeManager.start(runtime.id);
+          db.setRuntime(runtime);
+          project.status = 'RUNNING';
+        } catch (runtimeError: any) {
+          project.status = 'ERROR';
+          db.addAuditLog('RUNTIME_START_FAILED', { projectId: project.id, error: runtimeError.message });
+        }
       } else {
         project.status = 'BUILD_FAILED';
       }
@@ -703,10 +731,15 @@ dispatchWorker("run_pipeline").then(console.log);
           const logsRef = db.getBuildLogsRef();
           const result = await buildWorker.executeBuild(newBuild, logsRef, { simulateFailure: false });
           if (result.success) {
-            project.status = 'READY';
-            const runtime = await sandboxedRuntimeManager.create(project.id, newBuild.id, project.port);
-            await sandboxedRuntimeManager.start(runtime.id);
-            db.setRuntime(runtime);
+            try {
+              const runtime = await sandboxedRuntimeManager.create(project.id, newBuild.id, project.port);
+              await sandboxedRuntimeManager.start(runtime.id);
+              db.setRuntime(runtime);
+              project.status = 'RUNNING';
+            } catch (runtimeError: any) {
+              project.status = 'ERROR';
+              db.addAuditLog('RUNTIME_START_FAILED', { projectId: project.id, error: runtimeError.message });
+            }
           }
         }, 100);
       }
@@ -719,18 +752,65 @@ dispatchWorker("run_pipeline").then(console.log);
 
   // Custom User-Instructed Self-Development endpoint
   // Applies validated multi-file changes, records an auditable AI session, then rebuilds.
-  app.post('/api/v1/projects/:id/ai/custom-fix', async (req: Request, res: Response) => {
+  app.post('/api/v1/projects/:id/ai/custom-fix', requirePlatformToken, async (req: Request, res: Response) => {
     const project = db.getProjectById(req.params.id);
     if (!project) return res.status(404).json({ error: 'Project not found' });
 
-    const { instruction } = req.body || {};
+    const { instruction, proposalId, approve } = req.body || {};
     if (typeof instruction !== 'string' || !instruction.trim()) {
       return res.status(400).json({ error: 'Instruction is required' });
     }
 
     const workspaceFiles = db.getWorkspaceFiles(project.id);
     try {
-      const result = await runSelfDevelopment(project.name, project.framework, instruction, workspaceFiles);
+      let result: Awaited<ReturnType<typeof runSelfDevelopment>>;
+      if (proposalId) {
+        if (approve !== true) return res.status(400).json({ error: 'Explicit approve=true is required to apply a proposal.' });
+        const pending = pendingSelfDevelopment.get(String(proposalId));
+        if (!pending || pending.expiresAt < Date.now() || pending.projectId !== project.id || pending.instruction !== instruction.trim()) {
+          pendingSelfDevelopment.delete(String(proposalId));
+          return res.status(409).json({ error: 'Proposal not found, expired, or does not match this project and instruction.' });
+        }
+        result = pending.result;
+        pendingSelfDevelopment.delete(String(proposalId));
+        db.addAuditLog('AI_CHANGE_APPROVED', { projectId: project.id, proposalId });
+      } else {
+        result = await runSelfDevelopment(project.name, project.framework, instruction, workspaceFiles);
+        const id = `proposal-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+        pendingSelfDevelopment.set(id, {
+          projectId: project.id,
+          instruction: instruction.trim(),
+          result,
+          expiresAt: Date.now() + 15 * 60 * 1000
+        });
+        db.addAuditLog('AI_CHANGE_PROPOSED', { projectId: project.id, proposalId: id, files: result.changes.map((change) => change.path) });
+        const now = new Date().toISOString();
+        const proposalSession: AISession = {
+          id: `ai-proposal-${Date.now().toString(36)}`,
+          projectId: project.id,
+          buildId: 'awaiting-approval',
+          status: 'AWAITING_APPROVAL',
+          provider: result.provider,
+          model: result.model,
+          errorClassification: 'Unknown',
+          rootCauseAnalysis: result.rootCauseAnalysis,
+          repairPlan: result.repairPlan,
+          steps: result.changes.map((change, index) => ({ stepNumber: index + 1, title: `Proposed update ${change.path}`, status: 'PENDING', description: change.reason || 'Awaiting user approval.', targetFile: change.path })),
+          actions: [],
+          repairAttempts: 0,
+          maxRepairAttempts: 1,
+          tokensUsed: result.tokensUsed,
+          startedAt: now
+        };
+        db.saveAiSession(proposalSession);
+        return res.status(202).json({
+          pendingApproval: true,
+          proposalId: id,
+          expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+          session: proposalSession,
+          changes: result.changes.map(({ path, reason, content }) => ({ path, reason, size: content.length }))
+        });
+      }
 
       const githubTarget = GitHubProvider.validateUrl(project.repositoryUrl);
       if (!githubTarget.valid || !githubTarget.owner || !githubTarget.repo || githubTarget.owner === 'custom') {
@@ -820,10 +900,15 @@ dispatchWorker("run_pipeline").then(console.log);
         const logsRef = db.getBuildLogsRef();
         const buildResult = await buildWorker.executeBuild(newBuild, logsRef, { simulateFailure: false });
         if (buildResult.success) {
-          project.status = 'READY';
-          const runtime = await sandboxedRuntimeManager.create(project.id, newBuild.id, project.port);
-          await sandboxedRuntimeManager.start(runtime.id);
-          db.setRuntime(runtime);
+          try {
+            const runtime = await sandboxedRuntimeManager.create(project.id, newBuild.id, project.port);
+            await sandboxedRuntimeManager.start(runtime.id);
+            db.setRuntime(runtime);
+            project.status = 'RUNNING';
+          } catch (runtimeError: any) {
+            project.status = 'ERROR';
+            db.addAuditLog('RUNTIME_START_FAILED', { projectId: project.id, error: runtimeError.message });
+          }
         } else {
           project.status = 'BUILD_FAILED';
         }
@@ -869,7 +954,7 @@ dispatchWorker("run_pipeline").then(console.log);
     res.json({ path: filePath, content });
   });
 
-  app.post('/api/v1/projects/:id/files/save', (req: Request, res: Response) => {
+  app.post('/api/v1/projects/:id/files/save', requirePlatformToken, (req: Request, res: Response) => {
     const { path: filePath, content } = req.body;
     if (!filePath || content === undefined) {
       return res.status(400).json({ error: 'path and content are required' });
@@ -891,7 +976,7 @@ dispatchWorker("run_pipeline").then(console.log);
     res.json(db.getEnvVars(req.params.id));
   });
 
-  app.post('/api/v1/projects/:id/env', (req: Request, res: Response) => {
+  app.post('/api/v1/projects/:id/env', requirePlatformToken, (req: Request, res: Response) => {
     const { key, value, isSecret } = req.body;
     if (!key || value === undefined) return res.status(400).json({ error: 'Key and Value are required' });
     const envVar = db.addEnvVar(req.params.id, key, value, Boolean(isSecret));
