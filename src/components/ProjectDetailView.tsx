@@ -269,15 +269,16 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
   const [customRepairPrompt, setCustomRepairPrompt] = useState('');
   const [isCustomRepairing, setIsCustomRepairing] = useState(false);
 
-  const handleCustomRepair = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!customRepairPrompt.trim() || isCustomRepairing) return;
+  const handleCustomRepair = async (e?: React.FormEvent, requestedInstruction?: string) => {
+    e?.preventDefault();
+    const instruction = (requestedInstruction ?? customRepairPrompt).trim();
+    if (!instruction || isCustomRepairing) return;
     setIsCustomRepairing(true);
     try {
       const res = await fetch(`/api/v1/projects/${project.id}/ai/custom-fix`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ instruction: customRepairPrompt })
+        body: JSON.stringify({ instruction })
       });
       const data = await res.json();
       if (res.ok && data.pendingApproval) {
@@ -294,7 +295,7 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
         const approvalRes = await fetch(`/api/v1/projects/${project.id}/ai/custom-fix`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ instruction: customRepairPrompt.trim(), proposalId: data.proposalId, approve: true })
+          body: JSON.stringify({ instruction, proposalId: data.proposalId, approve: true })
         });
         const approvalData = await approvalRes.json();
         if (!approvalRes.ok) {
@@ -1639,6 +1640,20 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
             >
               <span>إرسال</span>
               <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+            <button
+              type="button"
+              disabled={isCustomRepairing || !chatInput.trim()}
+              onClick={() => {
+                const instruction = chatInput.trim();
+                setChatInput('');
+                void handleCustomRepair(undefined, instruction);
+              }}
+              title="اقتراح تعديل على الملفات ثم طلب موافقتك قبل التطبيق"
+              className="px-3 py-2.5 bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 text-white text-[11px] font-bold rounded-xl transition cursor-pointer flex items-center gap-1.5 shadow-sm whitespace-nowrap"
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>اقتراح تعديل</span>
             </button>
           </form>
         </div>
