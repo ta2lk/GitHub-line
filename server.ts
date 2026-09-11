@@ -294,8 +294,17 @@ async function startServer() {
     // Inject AI Bridge configuration if repository requires AI SDKs
     const aiReq = project.aiRequirements || project.analysis?.aiRequirements;
     if (aiReq && aiReq.required) {
-      const aiEnv = aiInjector.generateEnvironment(aiReq);
-      plan.environment = { ...plan.environment, ...aiEnv };
+      try {
+        const aiEnv = aiInjector.generateEnvironment(aiReq);
+        plan.environment = { ...plan.environment, ...aiEnv };
+      } catch (error: any) {
+        db.addAuditLog('BUILD_BLOCKED_MISSING_AI_BRIDGE_TOKEN', { projectId: project.id });
+        return res.status(503).json({
+          error: 'This repository requires AI access, but the platform AI Bridge is not configured.',
+          code: 'AI_BRIDGE_NOT_CONFIGURED',
+          action: 'Configure AI_BRIDGE_TOKEN in Render Environment Variables, then retry the build.'
+        });
+      }
     }
 
     const build = db.createBuild(project.id, plan);
