@@ -138,7 +138,10 @@ export const ImportProjectModal: React.FC<ImportProjectModalProps> = ({
         })
       });
       const buildData = await buildRes.json().catch(() => ({}));
-      if (!buildRes.ok) throw new Error(buildData.error || 'The project was created, but the build could not be started.');
+      if (!buildRes.ok) {
+        const detail = [buildData.error, buildData.action].filter(Boolean).join(' ');
+        throw new Error(detail || 'The project was created, but the build could not be started.');
+      }
 
       // Wait 2.2 seconds for container to spin up and register runtime
       await new Promise((resolve) => setTimeout(resolve, 2200));
