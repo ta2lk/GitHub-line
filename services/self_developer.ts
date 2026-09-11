@@ -48,6 +48,13 @@ function normalizeWorkspacePath(filePath: string): string {
   return normalized;
 }
 
+function assertWritableProjectPath(filePath: string): void {
+  const protectedPath = /^(?:\.env(?:\.|$)|\.github\/workflows\/|\.gitignore$|render\.ya?ml$|fly\.toml$|docker-compose(?:\..+)?$|.*(?:credential|secret|private[-_]?key).*)/i;
+  if (protectedPath.test(filePath)) {
+    throw new Error(`Protected project file cannot be changed by autonomous development: ${filePath}`);
+  }
+}
+
 function stripJsonFences(value: string): string {
   return value.replace(/^```(?:json)?\s*/i, '').replace(/\s*```$/i, '').trim();
 }
@@ -146,6 +153,7 @@ Rules:
 
   for (const candidate of parsed.changes) {
     const filePath = normalizeWorkspacePath(candidate?.path);
+    assertWritableProjectPath(filePath);
     if (seen.has(filePath)) throw new Error(`Duplicate file change: ${filePath}`);
     seen.add(filePath);
     if (typeof candidate?.content !== 'string') throw new Error(`Missing complete content for ${filePath}.`);

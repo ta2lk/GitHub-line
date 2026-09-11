@@ -802,7 +802,7 @@ function _legacy_agent_html(
 
       <div class="bg-slate-800/80 border border-slate-700 rounded-xl p-4 space-y-2">
         <h3 class="text-xs font-bold uppercase tracking-wider text-slate-400">Simulate Tool Actions</h3>
-        <p class="text-[11px] text-slate-400">Trigger simulated agent capability tools:</p>
+        <p class="text-[11px] text-slate-400">Agent capability tools require a verified runtime:</p>
         <div class="flex flex-col gap-2 pt-1">
           <button onclick="simulateTool('Web Search', 'Querying latest package releases for repository dependencies...')" class="w-full text-left px-3 py-2 rounded bg-slate-900 hover:bg-slate-750 text-xs text-slate-300 font-medium flex items-center justify-between border border-slate-700/50">
             <span>🔍 Search Dependencies</span>
