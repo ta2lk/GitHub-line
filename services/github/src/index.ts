@@ -105,16 +105,20 @@ export class GitHubProvider {
       }
 
       // Extract owner and repo for github.com
-      if (hostname === 'github.com' || hostname.endsWith('.github.com')) {
+      if (hostname === 'github.com') {
         const segments = parsed.pathname.split('/').filter(Boolean);
-        if (segments.length >= 2) {
+        if (segments.length === 2 || (segments.length === 3 && ['tree', 'blob'].includes(segments[2]))) {
           const owner = segments[0];
           const repo = segments[1].replace(/\.git$/, '');
+          if (!/^[A-Za-z0-9_.-]+$/.test(owner) || !/^[A-Za-z0-9_.-]+$/.test(repo)) {
+            return { valid: false, error: 'The GitHub owner or repository name contains unsupported characters.' };
+          }
           return { valid: true, owner, repo };
         }
+        return { valid: false, error: 'Use a repository URL in the form https://github.com/owner/repository.' };
       }
 
-      return { valid: true, owner: 'custom', repo: parsed.pathname.split('/').filter(Boolean).pop() || 'repo' };
+      return { valid: false, error: 'Only github.com repository URLs are supported.' };
     } catch (e: any) {
       return { valid: false, error: `Invalid URL format: ${e.message}` };
     }
@@ -127,12 +131,15 @@ export class GitHubProvider {
     logger.info(`Validating repository ${owner}/${repo}`);
     try {
       const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 2500);
+      const timeout = setTimeout(() => controller.abort(), 10000);
+      const token = process.env.GITHUB_TOKEN || process.env.GITHUB_PAT;
+      const headers: Record<string, string> = {
+        'User-Agent': 'Git2Live-ControlPlane/1.0',
+        Accept: 'application/vnd.github+json'
+      };
+      if (token) headers.Authorization = `Bearer ${token}`;
       const resp = await fetch(`https://api.github.com/repos/${owner}/${repo}`, {
-        headers: {
-          'User-Agent': 'Git2Live-ControlPlane/1.0',
-          Accept: 'application/vnd.github.v3+json'
-        },
+        headers,
         redirect: 'follow',
         signal: controller.signal
       });
@@ -154,24 +161,34 @@ export class GitHubProvider {
           language: data.language || ''
         };
       }
+      if (resp.status === 404 || resp.status === 401 || resp.status === 403) {
+        throw new Error(`GitHub repository lookup failed with HTTP ${resp.status}. Check that the repository exists and is accessible.`);
+      }
+      throw new Error(`GitHub repository lookup failed with HTTP ${resp.status}.`);
     } catch (e) {
-      logger.warn(`GitHub API request failed, falling back to heuristic parsing: ${e}`);
+      logger.error(`GitHub API request failed: ${e}`);
+      throw e;
     }
+  }
 
-    // Default fallback representation
-    return {
-      owner,
-      name: repo,
-      fullName: `${owner}/${repo}`,
-      defaultBranch: 'main',
-      isPrivate: false,
-      description: `Repository ${owner}/${repo}`,
-      htmlUrl: `https://github.com/${owner}/${repo}`,
-      topics: [],
-      stars: 0,
-      homepage: '',
-      language: ''
+  async getLatestCommitSha(owner: string, repo: string, branch: string): Promise<string> {
+    const token = process.env.GITHUB_TOKEN || process.env.GITHUB_PAT;
+    const headers: Record<string, string> = {
+      'User-Agent': 'Git2Live-ControlPlane/1.0',
+      Accept: 'application/vnd.github+json'
     };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    try {
+      const response = await fetch(`https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/commits/${encodeURIComponent(branch)}`, { headers, signal: controller.signal });
+      if (!response.ok) throw new Error(`GitHub branch '${branch}' lookup failed with HTTP ${response.status}.`);
+      const data: any = await response.json();
+      if (!data.sha) throw new Error(`GitHub returned no commit for branch '${branch}'.`);
+      return data.sha;
+    } finally {
+      clearTimeout(timeout);
+    }
   }
 
   /**
@@ -273,30 +290,23 @@ export class GitHubProvider {
    * Fetch raw file from repository with branch awareness and timeout
    */
   async getFile(owner: string, repo: string, path: string, branch = 'main'): Promise<string | null> {
-    const urls = [
-      `https://raw.githubusercontent.com/${owner}/${repo}/${branch}/${path}`,
-      branch !== 'main' ? `https://raw.githubusercontent.com/${owner}/${repo}/main/${path}` : null,
-      branch !== 'master' ? `https://raw.githubusercontent.com/${owner}/${repo}/master/${path}` : null
-    ].filter(Boolean) as string[];
-
-    for (const url of urls) {
-      try {
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 2000);
-        const res = await fetch(url, {
-          headers: { 'User-Agent': 'Git2Live' },
-          signal: controller.signal
-        });
-        clearTimeout(timeout);
-        if (res.ok) {
-          return await res.text();
-        }
-      } catch (e) {
-        // continue to next URL
-      }
+    const token = process.env.GITHUB_TOKEN || process.env.GITHUB_PAT;
+    const headers: Record<string, string> = {
+      'User-Agent': 'Git2Live-ControlPlane/1.0',
+      Accept: 'application/vnd.github.raw+json'
+    };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 10000);
+    try {
+      const url = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/contents/${path.split('/').map(encodeURIComponent).join('/')}?ref=${encodeURIComponent(branch)}`;
+      const response = await fetch(url, { headers, signal: controller.signal });
+      if (response.status === 404) return null;
+      if (!response.ok) throw new Error(`GitHub file '${path}' lookup failed with HTTP ${response.status}.`);
+      return await response.text();
+    } finally {
+      clearTimeout(timeout);
     }
-
-    return null;
   }
 }
 

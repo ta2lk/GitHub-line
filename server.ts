@@ -32,8 +32,15 @@ function hasValidPlatformToken(req: Request): boolean {
   return Boolean(supplied && supplied === configured);
 }
 
+function isTrustedBrowserMutation(req: Request): boolean {
+  const configuredOrigin = process.env.APP_URL || process.env.ALLOWED_ORIGIN;
+  const origin = req.header('origin');
+  const fetchSite = req.header('sec-fetch-site');
+  return Boolean(configuredOrigin && origin === configuredOrigin && (fetchSite === 'same-origin' || fetchSite === 'same-site'));
+}
+
 function requirePlatformToken(req: Request, res: Response, next: () => void) {
-  if (!hasValidPlatformToken(req)) {
+  if (!hasValidPlatformToken(req) && !isTrustedBrowserMutation(req)) {
     res.status(401).json({ error: 'Platform control authentication is required.' });
     return;
   }

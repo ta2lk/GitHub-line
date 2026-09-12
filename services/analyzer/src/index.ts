@@ -26,7 +26,17 @@ export class RepositoryAnalyzer {
 
     // 1. Fetch GitHub metadata (topics, description, language, stars, real default branch)
     const repoDetails = await gitHubProvider.getRepository(owner, repo);
-    const activeBranch = repoDetails.defaultBranch || branch || 'main';
+    let activeBranch = branch || repoDetails.defaultBranch || 'main';
+    let latestCommitSha: string;
+    try {
+      latestCommitSha = await gitHubProvider.getLatestCommitSha(owner, repo, activeBranch);
+    } catch (error) {
+      const fallbackBranch = repoDetails.defaultBranch || 'main';
+      if (fallbackBranch === activeBranch) throw error;
+      activeBranch = fallbackBranch;
+      latestCommitSha = await gitHubProvider.getLatestCommitSha(owner, repo, activeBranch);
+      logger.warn(`Requested branch was unavailable; using repository default branch '${activeBranch}'.`);
+    }
 
     // Helper to retrieve file either from provided fileMap or via GitHubProvider
     const fetchFile = async (filePath: string): Promise<string | null> => {
@@ -485,7 +495,7 @@ export class RepositoryAnalyzer {
     return {
       repositoryUrl: repoUrl,
       defaultBranch: activeBranch,
-      latestCommitSha: 'a7b3c8f902e4d',
+      latestCommitSha,
       detectedLanguage: language,
       detectedFramework: framework,
       detectedPackageManager: packageManager,
@@ -510,4 +520,3 @@ export class RepositoryAnalyzer {
 }
 
 export const repositoryAnalyzer = new RepositoryAnalyzer();
-
