@@ -143,21 +143,25 @@ export const ImportProjectModal: React.FC<ImportProjectModalProps> = ({
         throw new Error(detail || 'The project was created, but the build could not be started.');
       }
 
-      // Wait 2.2 seconds for container to spin up and register runtime
-      await new Promise((resolve) => setTimeout(resolve, 2200));
+      const build = buildData.build;
+      if (!build?.id) throw new Error('The build was accepted but no build identifier was returned.');
+      const terminalStates = new Set(['SUCCESS', 'FAILED', 'CANCELLED']);
+      let latestBuild = build;
+      for (let attempt = 0; attempt < 60 && !terminalStates.has(latestBuild.status); attempt += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        const statusRes = await fetch(`/api/v1/builds/${build.id}`);
+        if (!statusRes.ok) throw new Error('Unable to read the real build status.');
+        latestBuild = await statusRes.json();
+      }
+      if (latestBuild.status !== 'SUCCESS') {
+        throw new Error(latestBuild.errorSummary || `Build ended with status ${latestBuild.status}.`);
+      }
 
       // Fetch runtime id
-      try {
-        const rRes = await fetch(`/api/v1/projects/${newProj.id}/runtime`);
-        if (rRes.ok) {
-          const rData = await rRes.json();
-          if (rData && rData.id) {
-            setDeployedRuntimeId(rData.id);
-          }
-        }
-      } catch (e) {
-        // Fallback
-      }
+      const rRes = await fetch(`/api/v1/projects/${newProj.id}/runtime`);
+      const rData = rRes.ok ? await rRes.json() : null;
+      if (!rData?.id) throw new Error('Build succeeded but no real runtime was created. Docker execution may be unavailable.');
+      setDeployedRuntimeId(rData.id);
 
       setDeployedProject(newProj);
       setDeployStep('ready');
