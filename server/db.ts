@@ -1,3 +1,5 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import {
   User,
   Project,
@@ -24,6 +26,7 @@ export interface DatabaseStore {
 }
 
 export class Git2LiveDatabase {
+  private readonly persistencePath = process.env.GIT2LIVE_DB_FILE || path.resolve(process.cwd(), 'data', 'git2live-state.json');
   private users: User[] = [];
   private projects: Project[] = [];
   private builds: Build[] = [];
@@ -35,7 +38,55 @@ export class Git2LiveDatabase {
   private workspaceFiles: Map<string, Map<string, string>> = new Map();
 
   constructor() {
-    this.seedInitialData();
+    if (process.env.SEED_DEMO_DATA === 'true' || process.env.NODE_ENV !== 'production') {
+      this.seedInitialData();
+    }
+    this.loadPersistedState();
+  }
+
+  private persist(): void {
+    try {
+      fs.mkdirSync(path.dirname(this.persistencePath), { recursive: true });
+      const state = {
+        users: this.users,
+        projects: this.projects,
+        builds: this.builds,
+        buildLogs: this.buildLogs,
+        runtimes: this.runtimes,
+        aiSessions: this.aiSessions,
+        envVars: this.envVars,
+        auditLogs: this.auditLogs,
+        workspaceFiles: Array.from(this.workspaceFiles.entries()).map(([projectId, files]) => [projectId, Array.from(files.entries())])
+      };
+      const tmp = `${this.persistencePath}.tmp`;
+      fs.writeFileSync(tmp, JSON.stringify(state), 'utf8');
+      fs.renameSync(tmp, this.persistencePath);
+    } catch (error) {
+      console.error('[Git2LiveDatabase] persistence failed:', error);
+    }
+  }
+
+  private loadPersistedState(): void {
+    try {
+      if (!fs.existsSync(this.persistencePath)) return;
+      const state = JSON.parse(fs.readFileSync(this.persistencePath, 'utf8'));
+      if (!Array.isArray(state.projects) || !Array.isArray(state.builds)) return;
+      this.users = Array.isArray(state.users) ? state.users : this.users;
+      this.projects = state.projects;
+      this.builds = state.builds;
+      this.buildLogs = Array.isArray(state.buildLogs) ? state.buildLogs : [];
+      this.runtimes = Array.isArray(state.runtimes) ? state.runtimes : [];
+      this.aiSessions = Array.isArray(state.aiSessions) ? state.aiSessions : [];
+      this.envVars = Array.isArray(state.envVars) ? state.envVars : [];
+      this.auditLogs = Array.isArray(state.auditLogs) ? state.auditLogs : [];
+      this.workspaceFiles = new Map((state.workspaceFiles || []).map(([projectId, files]: [string, [string, string][]]) => [projectId, new Map(files)]));
+      for (const project of this.projects) {
+        project.latestBuild = this.builds.find((build) => build.id === project.latestBuild?.id);
+        project.activeRuntime = this.runtimes.find((runtime) => runtime.id === project.activeRuntime?.id);
+      }
+    } catch (error) {
+      console.error('[Git2LiveDatabase] persisted state ignored:', error);
+    }
   }
 
   private seedInitialData() {
@@ -169,7 +220,6 @@ export class Git2LiveDatabase {
         environment: {
           NODE_ENV: 'production',
           OPENAI_BASE_URL: 'http://localhost:3000/v1',
-          OPENAI_API_KEY: 'git2live-managed-token',
           AI_BRIDGE_ENABLED: 'true'
         },
         baseImage: 'git2live/node:20',
@@ -438,6 +488,7 @@ export class Git2LiveDatabase {
 
     this.projects.unshift(newProject);
     this.addAuditLog('PROJECT_CREATED', { projectId: newProject.id, name: newProject.name });
+    this.persist();
     return newProject;
   }
 
@@ -445,6 +496,7 @@ export class Git2LiveDatabase {
     const project = this.getProjectById(id);
     if (!project) return null;
     Object.assign(project, updates, { updatedAt: new Date().toISOString() });
+    this.persist();
     return project;
   }
 
@@ -455,6 +507,7 @@ export class Git2LiveDatabase {
     // Also cleanup associated runtimes
     this.runtimes = this.runtimes.filter((r) => r.projectId !== id);
     this.addAuditLog('PROJECT_DELETED', { projectId: id, name: removed.name });
+    this.persist();
     return true;
   }
 
@@ -491,6 +544,7 @@ export class Git2LiveDatabase {
     project.latestBuild = newBuild;
     project.status = 'BUILDING';
     this.addAuditLog('BUILD_STARTED', { buildId: newBuild.id, projectId });
+    this.persist();
     return newBuild;
   }
 
@@ -500,6 +554,10 @@ export class Git2LiveDatabase {
 
   getBuildLogsRef(): BuildLogEntry[] {
     return this.buildLogs;
+  }
+
+  persistState(): void {
+    this.persist();
   }
 
   // Runtime Methods
@@ -526,6 +584,7 @@ export class Git2LiveDatabase {
       project.activeRuntime = runtime;
       project.status = runtime.status === 'RUNNING' ? 'RUNNING' : 'STOPPED';
     }
+    this.persist();
   }
 
   // AI Session Methods
@@ -544,6 +603,7 @@ export class Git2LiveDatabase {
       this.aiSessions.unshift(session);
     }
     this.addAuditLog('AI_REPAIR_ACTION', { sessionId: session.id, status: session.status });
+    this.persist();
   }
 
   // Environment Variables
@@ -564,6 +624,7 @@ export class Git2LiveDatabase {
     const p = this.getProjectById(projectId);
     if (p) p.envCount = this.getEnvVars(projectId).length;
     this.addAuditLog('ENV_VAR_SET', { projectId, key });
+    this.persist();
     return entry;
   }
 
@@ -573,6 +634,7 @@ export class Git2LiveDatabase {
     const removed = this.envVars.splice(idx, 1)[0];
     const p = this.getProjectById(removed.projectId);
     if (p) p.envCount = this.getEnvVars(removed.projectId).length;
+    this.persist();
     return true;
   }
 
@@ -590,6 +652,7 @@ export class Git2LiveDatabase {
   setWorkspaceFile(projectId: string, path: string, content: string) {
     const files = this.getWorkspaceFiles(projectId);
     files.set(path, content);
+    this.persist();
   }
 
   // Audit Logs & Metrics
@@ -605,6 +668,7 @@ export class Git2LiveDatabase {
     if (this.auditLogs.length > 200) {
       this.auditLogs.pop();
     }
+    this.persist();
   }
 
   getAuditLogs(): AuditLog[] {

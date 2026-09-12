@@ -23,14 +23,17 @@ export interface RuntimeProvider {
 export class SandboxedRuntimeManager implements RuntimeProvider {
   private instances: Map<string, RuntimeInstance> = new Map();
 
-  async create(projectId: string, buildId: string, port = 3000): Promise<RuntimeInstance> {
+  async create(projectId: string, buildId: string, port = 3000, imageName?: string): Promise<RuntimeInstance> {
     const runtimeId = `rt-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 6)}`;
     const containerPort = port || 3000;
     const previewUrl = `/api/v1/preview/${runtimeId}`;
 
     const isDocker = await dockerRuntimeManager.isDockerAvailable();
     if (!isDocker) throw new Error('A Docker daemon is required for a real project runtime; no simulated runtime was created.');
-    const dockerResult = await dockerRuntimeManager.createContainer('node:20-alpine', containerPort, {
+    if (!imageName || !/^git2live\/[A-Za-z0-9._-]+:[A-Za-z0-9._-]+$/.test(imageName)) {
+      throw new Error('A verified runtime image is required; no generic image fallback is allowed.');
+    }
+    const dockerResult = await dockerRuntimeManager.createContainer(imageName, containerPort, {
       PORT: String(containerPort),
       NODE_ENV: 'production'
     });
@@ -70,8 +73,12 @@ export class SandboxedRuntimeManager implements RuntimeProvider {
     inst.status = 'RUNNING';
     inst.startedAt = new Date().toISOString();
     inst.lastActivity = new Date().toISOString();
-    inst.healthStatus = 'HEALTHY';
-    inst.healthChecksFailed = 0;
+    inst.healthStatus = 'PROBING';
+    const health = await this.healthCheck(runtimeId);
+    if (health !== 'HEALTHY') {
+      inst.status = 'FAILED';
+      throw new Error(`Runtime ${runtimeId} failed its Docker health check.`);
+    }
     logger.info(`Runtime ${runtimeId} started successfully.`);
     return inst;
   }
@@ -106,12 +113,16 @@ export class SandboxedRuntimeManager implements RuntimeProvider {
     const inst = this.instances.get(runtimeId);
     if (!inst) return null;
 
-    // Real-time metric tracking & jitter
-    if (inst.status === 'RUNNING') {
-      inst.cpuUsagePercent = Math.max(5, Math.min(85, Math.round((inst.cpuUsagePercent + (Math.random() * 8 - 4)) * 10) / 10));
-      inst.memoryUsageMb = Math.max(60, Math.min(600, Math.round(inst.memoryUsageMb + (Math.random() * 6 - 3))));
-      inst.uptimeSeconds = Math.round((Date.now() - new Date(inst.startedAt).getTime()) / 1000);
+    const container = await dockerRuntimeManager.inspectContainer(inst.containerId);
+    if (!container) {
+      inst.status = 'FAILED';
+      inst.healthStatus = 'UNHEALTHY';
+    } else if (!container.running && inst.status === 'RUNNING') {
+      inst.status = 'FAILED';
+      inst.healthStatus = 'UNHEALTHY';
+      inst.healthChecksFailed += 1;
     }
+    if (inst.status === 'RUNNING') inst.uptimeSeconds = Math.round((Date.now() - new Date(inst.startedAt).getTime()) / 1000);
 
     return inst;
   }
@@ -121,8 +132,14 @@ export class SandboxedRuntimeManager implements RuntimeProvider {
     if (!inst) return 'UNHEALTHY';
 
     if (inst.status === 'RUNNING') {
-      inst.healthStatus = 'HEALTHY';
-      inst.healthChecksFailed = 0;
+      const container = await dockerRuntimeManager.inspectContainer(inst.containerId);
+      if (container?.running) {
+        inst.healthStatus = 'HEALTHY';
+        inst.healthChecksFailed = 0;
+      } else {
+        inst.healthStatus = 'UNHEALTHY';
+        inst.healthChecksFailed += 1;
+      }
     } else {
       inst.healthStatus = 'UNHEALTHY';
       inst.healthChecksFailed += 1;

@@ -1,147 +1,123 @@
-import { Build, BuildStatus, BuildLogEntry, BuildPlan, LogLevel } from '../../../src/types.js';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+import { access, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import type { Build, BuildLogEntry, LogLevel } from '../../../src/types.js';
 import { createLogger } from '../../../packages/logger/src/index.js';
-import { dockerfileGenerator } from './dockerfile.js';
 import { LogSanitizer } from '../../runtime/src/sanitizer.js';
+import { dockerfileGenerator } from './dockerfile.js';
 
 export * from './dockerfile.js';
 
+const execFileAsync = promisify(execFile);
 const logger = createLogger('BuildWorker');
+const MAX_OUTPUT = 12000;
 
 export type LogListener = (entry: BuildLogEntry) => void;
+
+function safeCommand(command: string): string[] {
+  const trimmed = String(command || '').trim();
+  if (!trimmed || /[;&|`$<>\n\r]/.test(trimmed)) {
+    throw new Error(`Unsafe build command rejected: ${trimmed.slice(0, 120)}`);
+  }
+  const parts = trimmed.match(/(?:[^\\s"]+|"[^"]*")+/g) || [];
+  return parts.map((part) => part.replace(/^"|"$/g, ''));
+}
+
+function durationSeconds(startedAt: string): number {
+  return Math.max(1, Math.round((Date.now() - new Date(startedAt).getTime()) / 1000));
+}
 
 export class BuildWorker {
   private logListeners: Map<string, Set<LogListener>> = new Map();
 
   subscribeLogs(buildId: string, listener: LogListener) {
-    if (!this.logListeners.has(buildId)) {
-      this.logListeners.set(buildId, new Set());
-    }
+    if (!this.logListeners.has(buildId)) this.logListeners.set(buildId, new Set());
     this.logListeners.get(buildId)!.add(listener);
-    return () => {
-      this.logListeners.get(buildId)?.delete(listener);
-    };
+    return () => this.logListeners.get(buildId)?.delete(listener);
   }
 
-  emitLog(
-    buildLogs: BuildLogEntry[],
-    buildId: string,
-    level: LogLevel,
-    message: string,
-    source: BuildLogEntry['source'] = 'BUILDER'
-  ): BuildLogEntry {
-    const sanitizedMessage = LogSanitizer.sanitize(message);
+  emitLog(buildLogs: BuildLogEntry[], buildId: string, level: LogLevel, message: string, source: BuildLogEntry['source'] = 'BUILDER') {
     const entry: BuildLogEntry = {
-      id: `log-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
+      id: `log-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
       buildId,
       timestamp: new Date().toISOString(),
       level,
-      message: sanitizedMessage,
+      message: LogSanitizer.sanitize(message).slice(0, MAX_OUTPUT),
       source
     };
     buildLogs.push(entry);
-
-    // Notify active stream subscribers
-    const listeners = this.logListeners.get(buildId);
-    if (listeners) {
-      listeners.forEach((l) => l(entry));
-    }
-
+    this.logListeners.get(buildId)?.forEach((listener) => listener(entry));
     return entry;
   }
 
-  /**
-   * Executes sandboxed build step sequence with full state machine transitions
-   */
   async executeBuild(
     build: Build,
     buildLogs: BuildLogEntry[],
-    options?: {
-      simulateFailure?: boolean;
-      failureReason?: string;
-      customDelayMs?: number;
-    }
-  ): Promise<{ success: boolean; error?: string }> {
-    const delay = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
-    const stepDelay = options?.customDelayMs ?? 350;
-
-    const emit = (level: LogLevel, msg: string, src: BuildLogEntry['source'] = 'BUILDER') =>
-      this.emitLog(buildLogs, build.id, level, msg, src);
-
+    options: { repositoryUrl?: string; workspaceDir?: string; simulateFailure?: boolean; failureReason?: string } = {}
+  ): Promise<{ success: boolean; error?: string; workspaceDir?: string }> {
+    const emit = (level: LogLevel, message: string, source: BuildLogEntry['source'] = 'BUILDER') => this.emitLog(buildLogs, build.id, level, message, source);
+    const timeout = Math.max(10_000, Math.min(30 * 60_000, (build.buildPlan.timeoutSeconds || 600) * 1000));
+    let workspace = options.workspaceDir;
     try {
-      // 1. QUEUED
-      build.status = 'QUEUED';
-      emit('INFO', `Build #${build.id.slice(0, 8)} queued on execution worker pool.`);
-      await delay(stepDelay);
-
-      // 2. CLONING
-      build.status = 'CLONING';
-      emit('STEP', `Cloning branch '${build.branch}' at commit ${build.commitSha.slice(0, 7)}...`, 'GIT');
-      emit('INFO', `git clone --depth 1 --branch ${build.branch} (safe isolated workspace created)`, 'GIT');
-      await delay(stepDelay);
-      emit('INFO', `Repository unpacked: workspace verified and indexed.`, 'GIT');
-
-      // 3. ANALYZING
-      build.status = 'ANALYZING';
-      emit('STEP', `Verifying workspace manifests and security policies...`, 'ANALYZER');
-      emit('INFO', `Detected framework: ${build.buildPlan.framework} (${build.buildPlan.language})`, 'ANALYZER');
-      emit('INFO', `Base container image targeted: ${build.buildPlan.baseImage}`, 'ANALYZER');
-      await delay(stepDelay);
-
-      // 4. PREPARING & DOCKERFILE GENERATION
-      build.status = 'PREPARING';
-      emit('STEP', `Generating multi-stage Dockerfile for ${build.buildPlan.language}...`);
-      const generatedDockerfile = dockerfileGenerator.generate(build.buildPlan);
-      emit('INFO', `Generated ${generatedDockerfile.split('\n').length} lines of compliant container specification.`);
-      emit('INFO', `Enforcing resource limits: ${build.buildPlan.cpuLimitCores} CPU, ${build.buildPlan.memoryLimitMb}MB RAM, non-root user.`);
-      await delay(stepDelay);
-
-      // Check simulated failure hook (for testing AI repair pipeline!)
-      if (options?.simulateFailure) {
-        build.status = 'INSTALLING';
-        emit('STEP', `Executing: ${build.buildPlan.installCommand}`);
-        await delay(stepDelay);
-        emit('ERROR', `npm ERR! code MODULE_NOT_FOUND`);
-        emit('ERROR', `npm ERR! Cannot find module '@types/express' or incompatible peer dependency 'react@19'`);
-        emit('ERROR', options.failureReason || `Build failed during dependency resolution: Process exited with status 1`);
-        build.status = 'FAILED';
-        build.finishedAt = new Date().toISOString();
-        build.durationSeconds = 4;
-        build.errorSummary = options.failureReason || `Module resolution failure in package.json dependencies.`;
-        build.errorCode = 'ERR_DEP_RESOLUTION';
-        return { success: false, error: build.errorSummary };
+      if (options.simulateFailure) throw new Error(options.failureReason || 'Simulation is disabled in production execution mode.');
+      if (!workspace) {
+        if (!options.repositoryUrl) throw new Error('A repository URL is required for a real build.');
+        if (!/^https:\/\/github\.com\/[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+(?:\.git)?\/?$/.test(options.repositoryUrl)) {
+          throw new Error('Only public GitHub repository URLs are supported by the real builder.');
+        }
+        build.status = 'CLONING';
+        emit('STEP', `Cloning ${options.repositoryUrl} at ${build.branch}...`, 'GIT');
+        workspace = await mkdtemp(join(tmpdir(), `git2live-${build.id}-`));
+        await execFileAsync('git', ['clone', '--depth', '1', '--branch', build.branch, options.repositoryUrl, workspace], { timeout });
+        emit('INFO', 'Repository cloned into an isolated temporary workspace.', 'GIT');
       }
 
-      // 5. INSTALLING
+      build.status = 'ANALYZING';
+      emit('STEP', 'Validating the workspace and build plan.', 'ANALYZER');
+      const install = safeCommand(build.buildPlan.installCommand);
+      const buildCommand = safeCommand(build.buildPlan.buildCommand);
+      if (!install.length || !buildCommand.length) throw new Error('Install and build commands are required.');
+
       build.status = 'INSTALLING';
-      emit('STEP', `Executing: ${build.buildPlan.installCommand}`);
-      emit('INFO', `Resolved dependencies in sandbox environment.`);
-      await delay(stepDelay);
+      emit('STEP', `Executing ${install[0]} ${install.slice(1).join(' ')}`);
+      await execFileAsync(install[0], install.slice(1), { cwd: workspace, timeout, maxBuffer: 4 * 1024 * 1024 });
 
-      // 6. BUILDING
       build.status = 'BUILDING';
-      emit('STEP', `Executing: ${build.buildPlan.buildCommand}`);
-      emit('INFO', `Compilation and bundle optimization completed.`);
-      await delay(stepDelay);
+      emit('STEP', `Executing ${buildCommand[0]} ${buildCommand.slice(1).join(' ')}`);
+      await execFileAsync(buildCommand[0], buildCommand.slice(1), { cwd: workspace, timeout, maxBuffer: 4 * 1024 * 1024 });
 
-      // 7. TESTING
       build.status = 'TESTING';
-      emit('STEP', `Executing health and container integration probes...`);
-      emit('INFO', `Entry point validation on port ${build.buildPlan.port}: READY`);
-      await delay(stepDelay);
-
-      // 8. SUCCESS
-      build.status = 'SUCCESS';
+      emit('STEP', 'Checking the build output and declared entrypoint.');
+      let artifactPath = workspace;
+      await execFileAsync('docker', ['info', '--format', '{{.ServerVersion}}'], { timeout: 3000 });
+      try {
+        await access(join(workspace, 'Dockerfile'));
+      } catch {
+        await writeFile(join(workspace, 'Dockerfile'), dockerfileGenerator.generate(build.buildPlan), 'utf8');
+        emit('INFO', 'No Dockerfile was provided; generated a constrained platform template.', 'BUILDER');
+      }
+      const imageTag = `git2live/${build.projectId}:${build.id}`;
+      emit('STEP', `Building runtime image ${imageTag}.`, 'BUILDER');
+      await execFileAsync('docker', ['build', '--tag', imageTag, workspace], { timeout, maxBuffer: 4 * 1024 * 1024 });
+      artifactPath = imageTag;
       build.finishedAt = new Date().toISOString();
-      build.durationSeconds = Math.max(1, Math.round((new Date(build.finishedAt).getTime() - new Date(build.startedAt).getTime()) / 1000));
-      build.artifactPath = `/artifacts/${build.projectId}/${build.id}/dist.tar.gz`;
-      emit('INFO', `✓ Build completed successfully in ${build.durationSeconds}s! Artifact packaged at ${build.artifactPath}`);
-
-      return { success: true };
-    } catch (err: any) {
+      build.durationSeconds = durationSeconds(build.startedAt);
+      build.artifactPath = artifactPath;
+      build.status = 'SUCCESS';
+      emit('INFO', `Build completed from the real workspace in ${build.durationSeconds}s.`);
+      if (artifactPath !== workspace && !options.workspaceDir) await rm(workspace, { recursive: true, force: true }).catch(() => undefined);
+      return { success: true, workspaceDir: workspace };
+    } catch (error: any) {
       build.status = 'FAILED';
       build.finishedAt = new Date().toISOString();
-      build.errorSummary = err.message || 'Unexpected build worker failure';
-      emit('ERROR', `Build failure: ${build.errorSummary}`);
+      build.durationSeconds = durationSeconds(build.startedAt);
+      build.errorSummary = String(error?.stderr || error?.message || 'Build failed').slice(0, 1000);
+      build.errorCode = error?.code ? `ERR_${String(error.code).toUpperCase()}` : 'ERR_BUILD_FAILED';
+      emit('ERROR', build.errorSummary);
+      if (workspace && !options.workspaceDir) await rm(workspace, { recursive: true, force: true }).catch(() => undefined);
+      logger.error(`Build ${build.id} failed: ${build.errorSummary}`);
       return { success: false, error: build.errorSummary };
     }
   }
