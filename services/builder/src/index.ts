@@ -74,6 +74,14 @@ export class BuildWorker {
         emit('INFO', 'Repository cloned into an isolated temporary workspace.', 'GIT');
       }
 
+      // Dependency installation must happen inside the runtime image, never on
+      // the Render Node host. Fail before invoking pip/npm when Docker is absent.
+      try {
+        await execFileAsync('docker', ['info', '--format', '{{.ServerVersion}}'], { timeout: 3000 });
+      } catch {
+        throw new Error('A Docker-capable build worker is required. Dependencies were not executed on the host. Configure a Docker Worker and retry.');
+      }
+
       build.status = 'ANALYZING';
       emit('STEP', 'Validating the workspace and build plan.', 'ANALYZER');
       const install = safeCommand(build.buildPlan.installCommand);
@@ -91,7 +99,6 @@ export class BuildWorker {
       build.status = 'TESTING';
       emit('STEP', 'Checking the build output and declared entrypoint.');
       let artifactPath = workspace;
-      await execFileAsync('docker', ['info', '--format', '{{.ServerVersion}}'], { timeout: 3000 });
       try {
         await access(join(workspace, 'Dockerfile'));
       } catch {
