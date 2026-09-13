@@ -71,7 +71,7 @@ export class Git2LiveDatabase {
       if (!fs.existsSync(this.persistencePath)) return;
       const state = JSON.parse(fs.readFileSync(this.persistencePath, 'utf8'));
       if (!Array.isArray(state.projects) || !Array.isArray(state.builds)) return;
-      this.users = Array.isArray(state.users) ? state.users : this.users;
+      this.users = Array.isArray(state.users) && state.users.length > 0 ? state.users : this.users;
       this.projects = state.projects;
       this.builds = state.builds;
       this.buildLogs = Array.isArray(state.buildLogs) ? state.buildLogs : [];
@@ -428,7 +428,16 @@ export class Git2LiveDatabase {
 
   // User Methods
   getCurrentUser(): User {
-    return this.users[1]; // Alex Vance (demo user)
+    return this.users[1] || this.users[0] || {
+      id: 'usr-system-01',
+      email: 'system@git2live.local',
+      name: 'Git2Live System',
+      avatar: '',
+      role: 'ADMIN',
+      plan: 'FREE',
+      createdAt: new Date(0).toISOString(),
+      updatedAt: new Date().toISOString()
+    }; // A persisted database may contain zero or one user after a migration.
   }
 
   getUsers(): User[] {
