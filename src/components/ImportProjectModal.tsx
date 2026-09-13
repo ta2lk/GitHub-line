@@ -154,7 +154,11 @@ export const ImportProjectModal: React.FC<ImportProjectModalProps> = ({
         latestBuild = await statusRes.json();
       }
       if (latestBuild.status !== 'SUCCESS') {
-        throw new Error(latestBuild.errorSummary || `Build ended with status ${latestBuild.status}.`);
+        const summary = latestBuild.errorSummary || `Build ended with status ${latestBuild.status}.`;
+        if (/ENOENT|Docker-capable|docker daemon|Docker/i.test(summary)) {
+          throw new Error('تم تحليل المستودع واستيراده، لكن التشغيل يحتاج Docker Worker. لم يتم تشغيل pip أو npm على خادم Render.');
+        }
+        throw new Error(summary);
       }
 
       // Fetch runtime id
