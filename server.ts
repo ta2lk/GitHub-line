@@ -36,7 +36,16 @@ function isTrustedBrowserMutation(req: Request): boolean {
   const configuredOrigin = process.env.APP_URL || process.env.ALLOWED_ORIGIN;
   const origin = req.header('origin');
   const fetchSite = req.header('sec-fetch-site');
-  return Boolean(configuredOrigin && origin === configuredOrigin && (fetchSite === 'same-origin' || fetchSite === 'same-site'));
+  if (configuredOrigin && origin === configuredOrigin && (fetchSite === 'same-origin' || fetchSite === 'same-site')) return true;
+  const forwardedHost = req.header('x-forwarded-host')?.split(',')[0]?.trim();
+  const requestHost = forwardedHost || req.header('host');
+  if (!requestHost) return false;
+  if (!origin) return true;
+  try {
+    return new URL(origin).host === requestHost && (!fetchSite || fetchSite === 'same-origin');
+  } catch {
+    return false;
+  }
 }
 
 function requirePlatformToken(req: Request, res: Response, next: () => void) {
