@@ -339,7 +339,7 @@ async function startServer() {
 
       if (result.success) {
         try {
-          const runtime = await sandboxedRuntimeManager.create(project.id, build.id, project.port, build.artifactPath);
+          const runtime = await sandboxedRuntimeManager.create(project.id, build.id, project.port, build.artifactPath, build.buildPlan.startCommand);
           await sandboxedRuntimeManager.start(runtime.id);
           db.setRuntime(runtime);
           project.status = 'RUNNING';
@@ -374,7 +374,7 @@ async function startServer() {
     const buildId = latestSuccessBuild ? latestSuccessBuild.id : 'bld-latest';
 
     if (!latestSuccessBuild?.artifactPath) return res.status(409).json({ error: 'No verified runtime artifact is available for this project.' });
-    const runtime = await sandboxedRuntimeManager.create(project.id, buildId, project.port, latestSuccessBuild.artifactPath);
+    const runtime = await sandboxedRuntimeManager.create(project.id, buildId, project.port, latestSuccessBuild.artifactPath, latestSuccessBuild.buildPlan.startCommand);
     await sandboxedRuntimeManager.start(runtime.id);
     db.setRuntime(runtime);
     res.status(201).json(runtime);
@@ -767,7 +767,7 @@ dispatchWorker("run_pipeline").then(console.log);
           db.persistState();
           if (result.success) {
             try {
-              const runtime = await sandboxedRuntimeManager.create(project.id, newBuild.id, project.port, newBuild.artifactPath);
+              const runtime = await sandboxedRuntimeManager.create(project.id, newBuild.id, project.port, newBuild.artifactPath, newBuild.buildPlan.startCommand);
               await sandboxedRuntimeManager.start(runtime.id);
               db.setRuntime(runtime);
               project.status = 'RUNNING';
@@ -941,7 +941,7 @@ dispatchWorker("run_pipeline").then(console.log);
         db.persistState();
         if (buildResult.success) {
           try {
-            const runtime = await sandboxedRuntimeManager.create(project.id, newBuild.id, project.port, newBuild.artifactPath);
+            const runtime = await sandboxedRuntimeManager.create(project.id, newBuild.id, project.port, newBuild.artifactPath, newBuild.buildPlan.startCommand);
             await sandboxedRuntimeManager.start(runtime.id);
             db.setRuntime(runtime);
             project.status = 'RUNNING';
