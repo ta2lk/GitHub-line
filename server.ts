@@ -796,8 +796,17 @@ dispatchWorker("run_pipeline").then(console.log);
       return res.status(400).json({ error: 'Instruction is required' });
     }
 
-    const workspaceFiles = db.getWorkspaceFiles(project.id);
+    const githubTarget = GitHubProvider.validateUrl(project.repositoryUrl);
+    if (!githubTarget.valid || !githubTarget.owner || !githubTarget.repo || githubTarget.owner === 'custom') {
+      return res.status(422).json({ error: 'Self-development requires a valid github.com repository URL.' });
+    }
+
     try {
+      const workspaceFiles = await gitHubProvider.getWorkspaceFiles(
+        githubTarget.owner,
+        githubTarget.repo,
+        project.defaultBranch || 'main'
+      );
       let result: Awaited<ReturnType<typeof runSelfDevelopment>>;
       if (proposalId) {
         if (approve !== true) return res.status(400).json({ error: 'Explicit approve=true is required to apply a proposal.' });
@@ -845,11 +854,6 @@ dispatchWorker("run_pipeline").then(console.log);
           session: proposalSession,
           changes: result.changes.map(({ path, reason, content }) => ({ path, reason, size: content.length }))
         });
-      }
-
-      const githubTarget = GitHubProvider.validateUrl(project.repositoryUrl);
-      if (!githubTarget.valid || !githubTarget.owner || !githubTarget.repo || githubTarget.owner === 'custom') {
-        return res.status(422).json({ error: 'Self-development requires a valid github.com repository URL.' });
       }
 
       // Publish to an isolated branch first. Workspace state is updated only after GitHub accepts it.

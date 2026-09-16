@@ -100,6 +100,35 @@ export const ProjectDetailView: React.FC<ProjectDetailViewProps> = ({
     setIsSendingChat(true);
 
     try {
+      const isDevelopmentCommand = /^(\/dev|\/تطوير|عدّل|عدل|أضف|اضف|احذف|حذف|صلح|أصلح|طوّر|طور|اكتب|أنشئ|انشئ)/i.test(userText);
+      if (isDevelopmentCommand) {
+        const instruction = userText.replace(/^\/(?:dev|تطوير)\s*/i, '').trim() || userText;
+        const proposalResponse = await fetch(`/api/v1/projects/${project.id}/ai/custom-fix`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ instruction })
+        });
+        const proposal = await proposalResponse.json();
+        if (!proposalResponse.ok) throw new Error(proposal.error || 'Development command failed');
+        const applyResponse = proposal.pendingApproval
+          ? await fetch(`/api/v1/projects/${project.id}/ai/custom-fix`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ instruction, proposalId: proposal.proposalId, approve: true })
+            })
+          : proposalResponse;
+        const result = proposal.pendingApproval ? await applyResponse.json() : proposal;
+        if (!applyResponse.ok) throw new Error(result.error || 'GitHub update failed');
+        const github = result.github;
+        const link = github?.pullRequestUrl || github?.commitUrl || '';
+        setChatMessages((prev) => [...prev, {
+          sender: 'ai',
+          text: `تم تعديل ملفات المستودع الفعلية وإنشاء Commit على GitHub.${link ? `\n\n${link}` : ''}`,
+          time: new Date().toLocaleTimeString()
+        }]);
+        return;
+      }
+
       const res = await fetch(`/api/v1/preview/${runtime?.id || project.id}/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

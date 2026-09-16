@@ -191,6 +191,36 @@ export class GitHubProvider {
     }
   }
 
+  async getWorkspaceFiles(owner: string, repo: string, branch = 'main'): Promise<Map<string, string>> {
+    const token = process.env.GITHUB_TOKEN || process.env.GITHUB_PAT;
+    const headers: Record<string, string> = {
+      Accept: 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+      'User-Agent': 'Git2Live-ControlPlane/1.0'
+    };
+    if (token) headers.Authorization = `Bearer ${token}`;
+    const api = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}`;
+    const treeResponse = await fetch(`${api}/git/trees/${encodeURIComponent(branch)}?recursive=1`, { headers });
+    const treeData: any = await treeResponse.json();
+    if (!treeResponse.ok) throw new GitHubWriteException(`Could not read repository files: ${treeData.message || treeResponse.status}`);
+    const files = new Map<string, string>();
+    const ignored = /(^|\/)(node_modules|\.git|dist|build|coverage|\.next|vendor)(\/|$)/;
+    const candidates = (Array.isArray(treeData.tree) ? treeData.tree : [])
+      .filter((item: any) => item.type === 'blob' && typeof item.path === 'string' && !ignored.test(item.path))
+      .slice(0, 200);
+    for (const item of candidates) {
+      const fileResponse = await fetch(`${api}/contents/${item.path.split('/').map(encodeURIComponent).join('/')}?ref=${encodeURIComponent(branch)}`, { headers });
+      if (!fileResponse.ok) continue;
+      const body: any = await fileResponse.json();
+      if (body.encoding === 'base64' && typeof body.content === 'string') {
+        const content = Buffer.from(body.content.replace(/\s/g, ''), 'base64').toString('utf8');
+        if (!content.includes('\u0000') && content.length <= 250_000) files.set(item.path, content);
+      }
+    }
+    if (!files.size) throw new GitHubWriteException('The repository contains no readable text files.');
+    return files;
+  }
+
   /**
    * Publish validated workspace changes to a new GitHub branch.
    * The token is read only from the host environment and never returned to callers.
