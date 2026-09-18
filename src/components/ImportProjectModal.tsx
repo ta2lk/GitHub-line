@@ -31,7 +31,7 @@ export const ImportProjectModal: React.FC<ImportProjectModalProps> = ({
   initialFixture,
   onSuccess
 }) => {
-  const [url, setUrl] = useState(initialUrl || 'https://github.com/facebook/react');
+  const [url, setUrl] = useState(initialUrl || '');
   const [branch, setBranch] = useState('main');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isBuilding, setIsBuilding] = useState(false);
@@ -43,11 +43,14 @@ export const ImportProjectModal: React.FC<ImportProjectModalProps> = ({
   const [selectedFixture, setSelectedFixture] = useState<string | undefined>(initialFixture);
 
   useEffect(() => {
-    if (initialUrl) setUrl(initialUrl);
+    setUrl(initialUrl || '');
     if (initialFixture) setSelectedFixture(initialFixture);
+    else setSelectedFixture(undefined);
     if (isOpen) {
       setDeployStep('form');
       setDeployedProject(null);
+      setAnalysis(null);
+      setError(null);
       if (initialUrl) {
         handleAnalyze(initialUrl, initialFixture);
       }

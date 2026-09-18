@@ -47,9 +47,13 @@ export default function App() {
           return true;
         });
         setProjects(unique);
-        if (unique.length > 0 && !selectedProject) {
-          const claw = unique.find((p) => p.name.toLowerCase().includes('claw'));
-          setSelectedProject(claw || unique[0]);
+        if (unique.length > 0) {
+          setSelectedProject((current) => {
+            if (current && unique.some((p) => p.id === current.id)) {
+              return unique.find((p) => p.id === current.id) || current;
+            }
+            return unique[0];
+          });
         }
       }
 
