@@ -74,12 +74,16 @@ export class BuildWorker {
         emit('INFO', 'Repository cloned into an isolated temporary workspace.', 'GIT');
       }
 
-      // Dependency installation must happen inside the runtime image, never on
-      // the Render Node host. Fail before invoking pip/npm when Docker is absent.
-      try {
-        await execFileAsync('docker', ['info', '--format', '{{.ServerVersion}}'], { timeout: 3000 });
-      } catch {
-        throw new Error('A Docker-capable build worker is required. Dependencies were not executed on the host. Configure a Docker Worker and retry.');
+      // Render's Node service has no Docker daemon. In explicit Host Runtime mode,
+      // execute only validated commands in the isolated temporary workspace.
+      let dockerAvailable = true;
+      try { await execFileAsync('docker', ['info', '--format', '{{.ServerVersion}}'], { timeout: 3000 }); }
+      catch {
+        dockerAvailable = false;
+        if (process.env.GIT2LIVE_HOST_RUNTIME !== 'true') {
+          throw new Error('Docker is unavailable. Set GIT2LIVE_HOST_RUNTIME=true to use the constrained Host Runtime.');
+        }
+        emit('WARN', 'Docker unavailable; using constrained Host Runtime mode.', 'BUILDER');
       }
 
       build.status = 'ANALYZING';
@@ -105,10 +109,14 @@ export class BuildWorker {
         await writeFile(join(workspace, 'Dockerfile'), dockerfileGenerator.generate(build.buildPlan), 'utf8');
         emit('INFO', 'No Dockerfile was provided; generated a constrained platform template.', 'BUILDER');
       }
-      const imageTag = `git2live/${build.projectId}:${build.id}`;
-      emit('STEP', `Building runtime image ${imageTag}.`, 'BUILDER');
-      await execFileAsync('docker', ['build', '--tag', imageTag, workspace], { timeout, maxBuffer: 4 * 1024 * 1024 });
-      artifactPath = imageTag;
+      if (dockerAvailable) {
+        const imageTag = `git2live/${build.projectId}:${build.id}`;
+        emit('STEP', `Building runtime image ${imageTag}.`, 'BUILDER');
+        await execFileAsync('docker', ['build', '--tag', imageTag, workspace], { timeout, maxBuffer: 4 * 1024 * 1024 });
+        artifactPath = imageTag;
+      } else {
+        emit('INFO', 'Build completed in temporary Host Runtime workspace.', 'BUILDER');
+      }
       build.finishedAt = new Date().toISOString();
       build.durationSeconds = durationSeconds(build.startedAt);
       build.artifactPath = artifactPath;
