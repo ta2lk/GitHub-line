@@ -35,7 +35,7 @@ export const ImportProjectModal: React.FC<ImportProjectModalProps> = ({
   const [branch, setBranch] = useState('main');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isBuilding, setIsBuilding] = useState(false);
-  const [deployStep, setDeployStep] = useState<'form' | 'deploying' | 'ready'>('form');
+  const [deployStep, setDeployStep] = useState<'form' | 'deploying' | 'imported' | 'ready'>('form');
   const [deployedProject, setDeployedProject] = useState<any>(null);
   const [deployedRuntimeId, setDeployedRuntimeId] = useState<string>('default');
   const [analysis, setAnalysis] = useState<RepositoryAnalysis | null>(null);
@@ -114,6 +114,14 @@ export const ImportProjectModal: React.FC<ImportProjectModalProps> = ({
 
       const newProj = await projRes.json();
       if (!projRes.ok) throw new Error(newProj.error || 'Failed to create project');
+
+      const capabilitiesRes = await fetch('/api/v1/capabilities');
+      const capabilities = capabilitiesRes.ok ? await capabilitiesRes.json() : { canBuild: false };
+      if (!capabilities.canBuild) {
+        setDeployedProject(newProj);
+        setDeployStep('imported');
+        return;
+      }
 
       // 2. Trigger build immediately
       const buildRes = await fetch(`/api/v1/projects/${newProj.id}/build`, {
@@ -194,7 +202,7 @@ export const ImportProjectModal: React.FC<ImportProjectModalProps> = ({
           <div>
             <h2 className="text-xl font-bold text-slate-900 dark:text-white">Import GitHub Repository</h2>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Validates URL security, detects frameworks, and provisions a sandboxed build environment.
+              Validates URL security, detects frameworks, and imports the repository safely.
             </p>
           </div>
         </div>
@@ -227,6 +235,32 @@ export const ImportProjectModal: React.FC<ImportProjectModalProps> = ({
                 <span>Starting process on port :{analysis?.detectedPort}...</span>
               </div>
             </div>
+          </div>
+        )}
+
+        {/* Step: Imported without a runtime */}
+        {deployStep === 'imported' && (
+          <div className="py-6 text-center space-y-5">
+            <div className="w-16 h-16 rounded-2xl bg-blue-500/10 text-blue-500 border border-blue-500/20 flex items-center justify-center mx-auto">
+              <CheckCircle2 className="w-8 h-8" />
+            </div>
+            <div>
+              <span className="text-xs font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">Imported Successfully</span>
+              <h3 className="text-xl font-bold text-slate-900 dark:text-white mt-2">{deployedProject?.name} is ready for execution</h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 max-w-md mx-auto">
+                تمت قراءة المستودع وتحليله وحفظ المشروع. خادم Render الحالي لا يملك Docker، لذلك لم يتم تشغيل pip أو npm ولم يتم إنشاء Runtime وهمي.
+              </p>
+            </div>
+            <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-xl text-xs text-amber-800 dark:text-amber-200 max-w-md mx-auto">
+              يمكنك مراجعة المشروع والدردشة معه الآن. التشغيل الحي سيصبح متاحًا عند ربط Docker Worker.
+            </div>
+            <button
+              type="button"
+              onClick={() => { onSuccess(deployedProject, 'overview'); onClose(); }}
+              className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl transition cursor-pointer"
+            >
+              فتح المشروع المستورد
+            </button>
           </div>
         )}
 
@@ -480,7 +514,7 @@ export const ImportProjectModal: React.FC<ImportProjectModalProps> = ({
                   ) : (
                     <>
                       <Play className="w-3.5 h-3.5 fill-current" />
-                      Build & Launch Live App
+                      Import Repository
                     </>
                   )}
                 </button>
