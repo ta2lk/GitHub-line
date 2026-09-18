@@ -106,6 +106,20 @@ async function startServer() {
     });
   });
 
+  app.get('/api/v1/capabilities', async (req: Request, res: Response) => {
+    const dockerAvailable = await dockerRuntimeManager.isDockerAvailable();
+    res.json({
+      repositoryAnalysis: true,
+      projectImport: true,
+      dockerAvailable,
+      canBuild: dockerAvailable,
+      canRun: dockerAvailable,
+      message: dockerAvailable
+        ? 'Docker build and runtime execution are available.'
+        : 'Analysis and import are available. Build and runtime execution require a Docker worker.'
+    });
+  });
+
   app.get('/api/live', (req: Request, res: Response) => {
     res.json({ status: 'live', timestamp: new Date().toISOString() });
   });
@@ -290,6 +304,14 @@ async function startServer() {
   app.post('/api/v1/projects/:id/build', requirePlatformToken, async (req: Request, res: Response) => {
     const project = db.getProjectById(req.params.id);
     if (!project) return res.status(404).json({ error: 'Project not found' });
+
+    if (!(await dockerRuntimeManager.isDockerAvailable())) {
+      return res.status(503).json({
+        error: 'Repository imported successfully, but no Docker build worker is available on this Render service.',
+        code: 'DOCKER_WORKER_UNAVAILABLE',
+        action: 'Analysis and import remain available. Connect a Docker worker to build and run this repository.'
+      });
+    }
 
     const { simulateFailure, failureReason, customPlan } = req.body;
 
